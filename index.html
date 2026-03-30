@@ -932,7 +932,6 @@ function attemptLogin() {
   document.getElementById('current-user-name').textContent = name;
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
-  loadCustomExercises();
   refreshSelects();
   refreshTemplateSelects();
   renderDashboard();
@@ -963,7 +962,6 @@ function checkAutoLogin() {
       logs = JSON.parse(localStorage.getItem('gymLogs_' + u.key) || '[]');
       loadBWLocal();
       loadTemplatesLocal();
-      loadCustomExercises();
       loadGoals();
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('current-user-name').textContent = u.name;
@@ -1408,7 +1406,7 @@ function populateExerciseDropdown() {
   }
   customGroup.style.display = 'none';
   document.getElementById('exercise-custom-muscle-group').style.display = 'none'; dropGroup.style.display = 'block';
-  const list = getExercisesForGroup(group);
+  const list = EXERCISES[group] || [];
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
   // Switch form type based on group
   if (group === 'cardio') {
@@ -1461,9 +1459,14 @@ function buildSetRows() {
 
   let html = '';
   for (let i = 1; i <= setsCount; i++) {
-    html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);">
-      <div style="font-size:13px;font-weight:600;color:var(--text3);min-width:44px;">Set ${i}</div>
-      <div style="flex:1;">
+    html += `<div style="display:grid;grid-template-columns:52px 1fr 1fr auto;align-items:end;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);">
+      <div style="font-size:13px;font-weight:600;color:var(--text3);">Set ${i}</div>
+      <div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Weight (kg)</div>
+        <input type="number" class="set-weight-input" id="set-weight-${i}" value="${weight}" min="0" step="0.5" inputmode="decimal"
+          style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
+      </div>
+      <div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Actual reps</div>
         <input type="number" class="set-reps-input" id="set-reps-${i}" value="${targetReps}" min="0" inputmode="numeric"
           style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
@@ -1488,24 +1491,27 @@ function clearRPE() {
 
 function saveExercise() {
   const exercise = getExerciseName();
-  const weight = parseFloat(document.getElementById('inp-weight').value);
+  const defaultWeight = parseFloat(document.getElementById('inp-weight').value);
   const targetReps = parseInt(document.getElementById('inp-target-reps').value);
   const notes = document.getElementById('inp-notes').value.trim();
   const rpe = rpeSkipped ? null : parseInt(document.getElementById('inp-rpe').value);
   const date = document.getElementById('inp-date').value;
 
-  if (!exercise || isNaN(weight) || isNaN(targetReps)) { showToast('Missing exercise details.', 'error'); return; }
+  if (!exercise || isNaN(defaultWeight) || isNaN(targetReps)) { showToast('Missing exercise details.', 'error'); return; }
 
   const setInputs = document.querySelectorAll('.set-reps-input');
-  if (!setInputs.length) { showToast('Build your sets first.', 'error'); return; }
+  const weightInputs = document.querySelectorAll('.set-weight-input');
+  if (!setInputs.length || !weightInputs.length) { showToast('Build your sets first.', 'error'); return; }
 
   const sets = [];
   setInputs.forEach((inp, i) => {
     const actual = parseInt(inp.value) || 0;
-    sets.push({ setNum: i + 1, targetReps, actualReps: actual, hit: actual >= targetReps });
+    const setWeight = parseFloat(weightInputs[i]?.value);
+    const resolvedWeight = isNaN(setWeight) ? defaultWeight : setWeight;
+    sets.push({ setNum: i + 1, weight: resolvedWeight, targetReps, actualReps: actual, hit: actual >= targetReps });
   });
 
-  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * weight, 0));
+  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * st.weight, 0));
   const allHit = sets.every(s => s.hit);
   const completion = Math.round((sets.reduce((s,st) => s + Math.min(st.actualReps, st.targetReps), 0) / sets.reduce((s,st) => s + st.targetReps, 0)) * 100);
 
@@ -1514,14 +1520,14 @@ function saveExercise() {
   const customMuscle = group === 'custom'
     ? document.getElementById('inp-custom-muscle').value
     : group;
-  if (group === 'custom') rememberCustomExercise(exercise, customMuscle);
   const baseId = Date.now();
+  let prShown = false;
   sets.forEach((st, i) => {
     const entry = {
       id: baseId + (i * 100),
       date,
       exercise,
-      weight,
+      weight: st.weight,
       reps: st.actualReps,
       targetReps: st.targetReps,
       sets: 1,
@@ -1534,11 +1540,14 @@ function saveExercise() {
     logs.unshift(entry);
     save();
     pushEntry(entry);
-    if (pr && i === 0) showToast(`🏆 New PR on ${exercise}! ${weight}kg`, 'pr');
+    if (pr && !prShown) {
+      showToast(`🏆 New PR on ${exercise}! ${st.weight}kg`, 'pr');
+      prShown = true;
+    }
   });
 
   // Add to session display
-  sessionExercises.push({ exercise, weight, sets, targetReps, notes, rpe, totalVol, completion, allHit });
+  sessionExercises.push({ exercise, weight: defaultWeight, sets, targetReps, notes, rpe, totalVol, completion, allHit });
   renderSessionLog();
 
   // Reset form
@@ -1584,14 +1593,18 @@ function renderSessionLog() {
         background:${s.hit ? 'rgba(61,220,132,0.12)' : 'rgba(255,92,92,0.12)'};
         color:${s.hit ? 'var(--green)' : 'var(--red)'};
         border:0.5px solid ${s.hit ? 'rgba(61,220,132,0.3)' : 'rgba(255,92,92,0.3)'};">
-        ${s.actualReps}/${s.targetReps}
+        ${s.weight}kg × ${s.actualReps}/${s.targetReps}
       </span>`
     ).join('');
+    const uniqueWeights = [...new Set(ex.sets.map(s => s.weight))];
+    const weightSummary = uniqueWeights.length === 1
+      ? `${uniqueWeights[0]}kg`
+      : `${Math.min(...uniqueWeights)}–${Math.max(...uniqueWeights)}kg`;
     return `<div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
         <div>
           <div style="font-size:15px;font-weight:600;">${ex.exercise}</div>
-          <div style="font-size:12px;color:var(--text3);">${ex.weight}kg &bull; ${ex.completion}% completion &bull; ${ex.totalVol}kg vol</div>
+          <div style="font-size:12px;color:var(--text3);">${weightSummary} &bull; ${ex.completion}% completion &bull; ${ex.totalVol}kg vol</div>
         </div>
         <button class="btn btn-sm btn-danger-sm" onclick="removeSessionExercise(${i})">Remove</button>
       </div>
@@ -1661,9 +1674,6 @@ function saveCardio() {
   if (calories) summaryParts.push(calories + ' cal');
 
   const summary = summaryParts.join(' · ');
-  const group = document.getElementById('inp-group').value;
-  const customMuscle = group === 'custom' ? document.getElementById('inp-custom-muscle').value : group;
-  if (group === 'custom') rememberCustomExercise(exercise, customMuscle);
   const entry = {
     id: Date.now(), date, exercise,
     weight: 0, reps: duration, targetReps: duration, sets: 1, setNum: 1,
@@ -1709,39 +1719,6 @@ function deleteLog(id) {
 
 // ── TEMPLATES ──
 let templates = [];
-let customExercises = {};
-
-function loadCustomExercises() {
-  if (!currentUser) return;
-  customExercises = JSON.parse(localStorage.getItem('gymCustomExercises_' + currentUser.key) || '{}');
-}
-
-function saveCustomExercises() {
-  if (!currentUser) return;
-  localStorage.setItem('gymCustomExercises_' + currentUser.key, JSON.stringify(customExercises));
-}
-
-function rememberCustomExercise(name, group) {
-  const exercise = String(name || '').trim();
-  const muscleGroup = String(group || '').trim();
-  if (!exercise || !muscleGroup || muscleGroup === 'other' || muscleGroup === 'custom') return;
-  if (!customExercises[muscleGroup]) customExercises[muscleGroup] = [];
-  const exists = customExercises[muscleGroup].some(e => e.toLowerCase() === exercise.toLowerCase());
-  if (!exists) {
-    customExercises[muscleGroup].push(exercise);
-    customExercises[muscleGroup].sort((a,b) => a.localeCompare(b));
-    saveCustomExercises();
-  }
-}
-
-function getExercisesForGroup(group) {
-  const base = EXERCISES[group] ? [...EXERCISES[group]] : [];
-  const extra = customExercises[group] || [];
-  extra.forEach(ex => {
-    if (!base.some(item => item.toLowerCase() === ex.toLowerCase())) base.push(ex);
-  });
-  return base.sort((a,b) => a.localeCompare(b));
-}
 
 function loadTemplatesLocal() {
   if (!currentUser) return;
@@ -1811,7 +1788,7 @@ function populateTmplExerciseDropdown() {
   if (!group) { dd.style.display='none'; cu.style.display='none'; return; }
   if (group === 'custom') { dd.style.display='none'; cu.style.display='block'; return; }
   cu.style.display='none'; dd.style.display='block';
-  const list = getExercisesForGroup(group);
+  const list = EXERCISES[group] || [];
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
 }
 
@@ -2815,7 +2792,6 @@ function switchPage(name, btn) {
 if (checkAutoLogin()) {
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
-  loadCustomExercises();
   refreshSelects();
   refreshTemplateSelects();
   renderDashboard();
