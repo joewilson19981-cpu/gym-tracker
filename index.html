@@ -932,6 +932,7 @@ function attemptLogin() {
   document.getElementById('current-user-name').textContent = name;
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
+  loadCustomExercises();
   refreshSelects();
   refreshTemplateSelects();
   renderDashboard();
@@ -962,6 +963,7 @@ function checkAutoLogin() {
       logs = JSON.parse(localStorage.getItem('gymLogs_' + u.key) || '[]');
       loadBWLocal();
       loadTemplatesLocal();
+      loadCustomExercises();
       loadGoals();
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('current-user-name').textContent = u.name;
@@ -1406,7 +1408,7 @@ function populateExerciseDropdown() {
   }
   customGroup.style.display = 'none';
   document.getElementById('exercise-custom-muscle-group').style.display = 'none'; dropGroup.style.display = 'block';
-  const list = EXERCISES[group] || [];
+  const list = getExercisesForGroup(group);
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
   // Switch form type based on group
   if (group === 'cardio') {
@@ -1512,6 +1514,7 @@ function saveExercise() {
   const customMuscle = group === 'custom'
     ? document.getElementById('inp-custom-muscle').value
     : group;
+  if (group === 'custom') rememberCustomExercise(exercise, customMuscle);
   const baseId = Date.now();
   sets.forEach((st, i) => {
     const entry = {
@@ -1658,6 +1661,9 @@ function saveCardio() {
   if (calories) summaryParts.push(calories + ' cal');
 
   const summary = summaryParts.join(' · ');
+  const group = document.getElementById('inp-group').value;
+  const customMuscle = group === 'custom' ? document.getElementById('inp-custom-muscle').value : group;
+  if (group === 'custom') rememberCustomExercise(exercise, customMuscle);
   const entry = {
     id: Date.now(), date, exercise,
     weight: 0, reps: duration, targetReps: duration, sets: 1, setNum: 1,
@@ -1703,6 +1709,39 @@ function deleteLog(id) {
 
 // ── TEMPLATES ──
 let templates = [];
+let customExercises = {};
+
+function loadCustomExercises() {
+  if (!currentUser) return;
+  customExercises = JSON.parse(localStorage.getItem('gymCustomExercises_' + currentUser.key) || '{}');
+}
+
+function saveCustomExercises() {
+  if (!currentUser) return;
+  localStorage.setItem('gymCustomExercises_' + currentUser.key, JSON.stringify(customExercises));
+}
+
+function rememberCustomExercise(name, group) {
+  const exercise = String(name || '').trim();
+  const muscleGroup = String(group || '').trim();
+  if (!exercise || !muscleGroup || muscleGroup === 'other' || muscleGroup === 'custom') return;
+  if (!customExercises[muscleGroup]) customExercises[muscleGroup] = [];
+  const exists = customExercises[muscleGroup].some(e => e.toLowerCase() === exercise.toLowerCase());
+  if (!exists) {
+    customExercises[muscleGroup].push(exercise);
+    customExercises[muscleGroup].sort((a,b) => a.localeCompare(b));
+    saveCustomExercises();
+  }
+}
+
+function getExercisesForGroup(group) {
+  const base = EXERCISES[group] ? [...EXERCISES[group]] : [];
+  const extra = customExercises[group] || [];
+  extra.forEach(ex => {
+    if (!base.some(item => item.toLowerCase() === ex.toLowerCase())) base.push(ex);
+  });
+  return base.sort((a,b) => a.localeCompare(b));
+}
 
 function loadTemplatesLocal() {
   if (!currentUser) return;
@@ -1772,7 +1811,7 @@ function populateTmplExerciseDropdown() {
   if (!group) { dd.style.display='none'; cu.style.display='none'; return; }
   if (group === 'custom') { dd.style.display='none'; cu.style.display='block'; return; }
   cu.style.display='none'; dd.style.display='block';
-  const list = EXERCISES[group] || [];
+  const list = getExercisesForGroup(group);
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
 }
 
@@ -2776,6 +2815,7 @@ function switchPage(name, btn) {
 if (checkAutoLogin()) {
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
+  loadCustomExercises();
   refreshSelects();
   refreshTemplateSelects();
   renderDashboard();
