@@ -406,6 +406,22 @@
         <label>Exercise name</label>
         <input type="text" id="inp-exercise" placeholder="Type exercise name..." autocomplete="off" oninput="showExercisePB()">
       </div>
+      <div class="form-group" id="exercise-custom-muscle-group" style="display:none;">
+        <label>Muscle group (for tracking)</label>
+        <select id="inp-custom-muscle">
+          <option value="other">Not sure / Other</option>
+          <option value="chest">Chest</option>
+          <option value="back">Back</option>
+          <option value="shoulders">Shoulders</option>
+          <option value="biceps">Biceps</option>
+          <option value="triceps">Triceps</option>
+          <option value="legs">Legs</option>
+          <option value="glutes">Glutes</option>
+          <option value="core">Core</option>
+          <option value="cardio">Cardio</option>
+          <option value="full">Full Body</option>
+        </select>
+      </div>
 
       <!-- PB BANNER -->
       <div id="exercise-pb-banner" style="display:none; background:rgba(232,255,71,0.06); border:0.5px solid rgba(232,255,71,0.2); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:12px;">
@@ -1193,7 +1209,9 @@ function renderDashboard() {
     'cardio':['Treadmill','Rowing','Cycling','Stair','Elliptical','HIIT','Jump Rope','Battle Rope','Cross Trainer'],
   };
 
-  function getMusclGroup(exercise) {
+  function getMusclGroup(exercise, log) {
+    // Use stored muscleGroup if available (set for custom exercises)
+    if (log && log.muscleGroup && log.muscleGroup !== 'other') return log.muscleGroup;
     const ex = exercise.toLowerCase();
     for (const [group, keywords] of Object.entries(muscleMap)) {
       if (keywords.some(k => ex.includes(k.toLowerCase()))) return group;
@@ -1204,9 +1222,9 @@ function renderDashboard() {
   const weekLogs = logs.filter(l => l.date >= daysAgo(7));
   const muscleSets = {};
   weekLogs.forEach(l => {
-    const g = getMusclGroup(l.exercise);
+    const g = getMusclGroup(l.exercise, l);
     if (!muscleSets[g]) muscleSets[g] = new Set();
-    muscleSets[g].add(l.date + '_' + l.exercise); // unique exercise per day
+    muscleSets[g].add(l.date + '_' + l.exercise);
   });
   const muscleSetCounts = {};
   Object.entries(muscleSets).forEach(([g, s]) => muscleSetCounts[g] = s.size);
@@ -1238,7 +1256,7 @@ function renderDashboard() {
   const suggEl = document.getElementById('d-suggestion-card');
   const suggText = document.getElementById('d-suggestion');
   if (weekLogs.length) {
-    const trainedGroups = new Set(weekLogs.map(l => getMusclGroup(l.exercise)));
+    const trainedGroups = new Set(weekLogs.map(l => getMusclGroup(l.exercise, l)));
     const allGroups = ['chest','back','shoulders','legs','core'];
     const untrained = allGroups.filter(g => !trainedGroups.has(g));
     if (untrained.length) {
@@ -1359,14 +1377,17 @@ function populateExerciseDropdown() {
   const sel = document.getElementById('inp-exercise-select');
   if (!group) {
     dropGroup.style.display = 'none'; customGroup.style.display = 'none';
+    document.getElementById('exercise-custom-muscle-group').style.display = 'none';
     switchToWeightsForm(); return;
   }
   if (group === 'custom') {
     dropGroup.style.display = 'none'; customGroup.style.display = 'block';
+    document.getElementById('exercise-custom-muscle-group').style.display = 'block';
     document.getElementById('inp-exercise').value = '';
     switchToWeightsForm(); return;
   }
-  customGroup.style.display = 'none'; dropGroup.style.display = 'block';
+  customGroup.style.display = 'none';
+  document.getElementById('exercise-custom-muscle-group').style.display = 'none'; dropGroup.style.display = 'block';
   const list = EXERCISES[group] || [];
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
   // Switch form type based on group
@@ -1469,10 +1490,14 @@ function saveExercise() {
   const completion = Math.round((sets.reduce((s,st) => s + Math.min(st.actualReps, st.targetReps), 0) / sets.reduce((s,st) => s + st.targetReps, 0)) * 100);
 
   // Save each set as individual log entry
+  const group = document.getElementById('inp-group').value;
+  const customMuscle = group === 'custom'
+    ? document.getElementById('inp-custom-muscle').value
+    : group;
   const baseId = Date.now();
   sets.forEach((st, i) => {
     const entry = {
-      id: baseId + (i * 100), // space IDs 100ms apart to avoid collisions
+      id: baseId + (i * 100),
       date,
       exercise,
       weight,
@@ -1481,7 +1506,8 @@ function saveExercise() {
       sets: 1,
       setNum: st.setNum,
       notes: i === 0 ? notes : '',
-      rpe: i === 0 ? rpe : null
+      rpe: i === 0 ? rpe : null,
+      muscleGroup: customMuscle
     };
     const pr = isPR(entry);
     logs.unshift(entry);
@@ -1498,8 +1524,10 @@ function saveExercise() {
   document.getElementById('inp-group').value = '';
   document.getElementById('inp-exercise-select').value = '';
   document.getElementById('inp-exercise').value = '';
+  document.getElementById('inp-custom-muscle').value = 'other';
   document.getElementById('exercise-dropdown-group').style.display = 'none';
   document.getElementById('exercise-custom-group').style.display = 'none';
+  document.getElementById('exercise-custom-muscle-group').style.display = 'none';
   document.getElementById('inp-weight').value = '';
   document.getElementById('inp-target-reps').value = '';
   document.getElementById('inp-sets-count').value = '3';
@@ -2094,30 +2122,57 @@ function renderHistory() {
   el.innerHTML = filtered.map(l => {
     const pr = isPR(l);
     const isCardio = l.cardio || l.exercise === 'Treadmill Run' || CARDIO_EXERCISES[l.exercise];
+    const muscleLabel = l.muscleGroup && l.muscleGroup !== 'other'
+      ? `<span class="badge" style="background:var(--bg4);color:var(--text3);border:0.5px solid var(--border2);text-transform:capitalize;">${l.muscleGroup}</span>` : '';
     if (isCardio) {
-      return `<div class="log-item">
+      return `<div class="log-item" id="log-item-${l.id}">
         <div class="log-top">
           <div>
             <div class="log-exercise">${l.exercise}</div>
             <div class="log-date">${l.date}</div>
           </div>
-          <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm btn-ghost" onclick="toggleEditLog(${l.id})">✏️</button>
+            <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
+          </div>
         </div>
         <div class="log-detail">${l.summary || l.notes || l.reps + ' mins'}</div>
-        ${l.notes && l.notes !== l.summary ? `<div class="log-notes">${l.notes}</div>` : ''}
+        <div id="log-edit-${l.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:0.5px solid var(--border);">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:8px;">Edit entry</div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label>Muscle group</label>
+            <select id="edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;">
+              <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
+              <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
+              <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
+              <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
+              <option value="biceps" ${l.muscleGroup==='biceps'?'selected':''}>Biceps</option>
+              <option value="triceps" ${l.muscleGroup==='triceps'?'selected':''}>Triceps</option>
+              <option value="legs" ${l.muscleGroup==='legs'?'selected':''}>Legs</option>
+              <option value="glutes" ${l.muscleGroup==='glutes'?'selected':''}>Glutes</option>
+              <option value="core" ${l.muscleGroup==='core'?'selected':''}>Core</option>
+              <option value="cardio" ${l.muscleGroup==='cardio'?'selected':''}>Cardio</option>
+              <option value="full" ${l.muscleGroup==='full'?'selected':''}>Full Body</option>
+            </select>
+          </div>
+          <button class="btn btn-accent btn-sm" style="width:100%;" onclick="saveLogEdit(${l.id})">Save changes</button>
+        </div>
       </div>`;
     }
     const vol = Math.round(l.weight * l.reps);
     const hasTarget = l.targetReps && l.targetReps !== l.reps;
     const repsDisplay = hasTarget ? `${l.reps}/${l.targetReps} reps` : `${l.reps} reps`;
     const hit = !hasTarget || l.reps >= l.targetReps;
-    return `<div class="log-item">
+    return `<div class="log-item" id="log-item-${l.id}">
       <div class="log-top">
         <div>
           <div class="log-exercise">${l.exercise}</div>
           <div class="log-date">${l.date}${l.setNum ? ` &bull; Set ${l.setNum}` : ''}</div>
         </div>
-        <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm btn-ghost" onclick="toggleEditLog(${l.id})">✏️</button>
+          <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
+        </div>
       </div>
       <div class="log-detail">${l.weight}kg &times; <span style="color:${hit?'var(--green)':'var(--red)'}">${repsDisplay}</span></div>
       ${l.notes ? `<div class="log-notes">${l.notes}</div>` : ''}
@@ -2126,9 +2181,79 @@ function renderHistory() {
         <span class="badge badge-vol">${vol}kg vol</span>
         <span class="badge badge-1rm">~${calc1RM(l.weight, l.reps)}kg 1RM</span>
         ${l.rpe ? `<span class="badge" style="background:rgba(232,255,71,0.1);color:var(--accent);border:0.5px solid rgba(232,255,71,0.25);">RPE ${l.rpe}</span>` : ''}
+        ${muscleLabel}
+      </div>
+      <div id="log-edit-${l.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:0.5px solid var(--border);">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:8px;">Edit entry</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Weight (kg)</div>
+            <input type="number" id="edit-weight-${l.id}" value="${l.weight}" min="0" step="0.5" inputmode="decimal"
+              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Actual reps</div>
+            <input type="number" id="edit-reps-${l.id}" value="${l.reps}" min="0" inputmode="numeric"
+              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Target reps</div>
+            <input type="number" id="edit-target-${l.id}" value="${l.targetReps || l.reps}" min="0" inputmode="numeric"
+              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Muscle group</label>
+          <select id="edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;">
+            <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
+            <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
+            <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
+            <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
+            <option value="biceps" ${l.muscleGroup==='biceps'?'selected':''}>Biceps</option>
+            <option value="triceps" ${l.muscleGroup==='triceps'?'selected':''}>Triceps</option>
+            <option value="legs" ${l.muscleGroup==='legs'?'selected':''}>Legs</option>
+            <option value="glutes" ${l.muscleGroup==='glutes'?'selected':''}>Glutes</option>
+            <option value="core" ${l.muscleGroup==='core'?'selected':''}>Core</option>
+            <option value="cardio" ${l.muscleGroup==='cardio'?'selected':''}>Cardio</option>
+            <option value="full" ${l.muscleGroup==='full'?'selected':''}>Full Body</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Notes</label>
+          <input type="text" id="edit-notes-${l.id}" value="${(l.notes||'').replace(/"/g,'&quot;')}" placeholder="Notes..."
+            style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;outline:none;">
+        </div>
+        <button class="btn btn-accent btn-sm" style="width:100%;" onclick="saveLogEdit(${l.id})">Save changes</button>
       </div>
     </div>`;
   }).join('');
+}
+
+function toggleEditLog(id) {
+  const el = document.getElementById('log-edit-' + id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function saveLogEdit(id) {
+  const idx = logs.findIndex(l => l.id === id);
+  if (idx === -1) return;
+  const weight = parseFloat(document.getElementById('edit-weight-' + id)?.value);
+  const reps = parseInt(document.getElementById('edit-reps-' + id)?.value);
+  const target = parseInt(document.getElementById('edit-target-' + id)?.value);
+  const muscle = document.getElementById('edit-muscle-' + id)?.value;
+  const notes = document.getElementById('edit-notes-' + id)?.value || '';
+  if (!isNaN(weight)) logs[idx].weight = weight;
+  if (!isNaN(reps)) logs[idx].reps = reps;
+  if (!isNaN(target)) logs[idx].targetReps = target;
+  if (muscle) logs[idx].muscleGroup = muscle;
+  logs[idx].notes = notes;
+  save();
+  pushEntry(logs[idx]); // sync update to sheets
+  renderHistory();
+  renderDashboard();
+  renderPBs();
+  showToast('Entry updated!');
 }
 
 // ── PROGRESS ──
