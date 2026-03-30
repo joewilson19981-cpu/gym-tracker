@@ -996,33 +996,10 @@ function setSyncIndicator(status) {
   el.style.color = s.color;
 }
 
-function sheetRequest(params) {
-  return new Promise((resolve, reject) => {
-    const cbName = 'gsCallback_' + Date.now();
-    const timeout = setTimeout(() => {
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
-      reject(new Error('Timeout'));
-    }, 10000);
-
-    window[cbName] = function(data) {
-      clearTimeout(timeout);
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
-      resolve(data);
-    };
-
-    const allParams = { ...params, callback: cbName };
-    const query = Object.keys(allParams).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(allParams[k])).join('&');
-    const script = document.createElement('script');
-    script.src = SCRIPT_URL + '?' + query;
-    script.onerror = () => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      reject(new Error('Script load error'));
-    };
-    document.head.appendChild(script);
-  });
+async function sheetRequest(params) {
+  const url = SCRIPT_URL + '?' + new URLSearchParams(params).toString();
+  const res = await fetch(url);
+  return res.json();
 }
 
 async function pushEntry(entry) {
@@ -1056,17 +1033,27 @@ async function loadFromSheets() {
   try {
     const data = await sheetRequest({ action: 'getAll', user: currentUser.key });
     if (Array.isArray(data) && data.length > 0) {
-      logs = data.map(r => ({
-        id: Number(r.id), date: r.date, exercise: r.exercise,
-        weight: parseFloat(r.weight), reps: parseInt(r.reps),
-        sets: parseInt(r.sets), notes: r.notes || '',
-        targetReps: r.targetReps ? parseInt(r.targetReps) : null,
-        setNum: r.setNum ? parseInt(r.setNum) : null,
-        rpe: r.rpe ? parseInt(r.rpe) : null,
-        muscleGroup: r.muscleGroup || null,
-        cardio: r.cardio || false,
-        summary: r.summary || null
-      })).sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+      logs = data.map(r => {
+        try {
+          return {
+            id: Number(r.id),
+            date: String(r.date || '').slice(0, 10),
+            exercise: r.exercise || '',
+            weight: parseFloat(r.weight) || 0,
+            reps: parseInt(r.reps) || 0,
+            sets: parseInt(r.sets) || 1,
+            notes: r.notes || '',
+            targetReps: r.targetReps ? parseInt(r.targetReps) : null,
+            setNum: r.setNum ? parseInt(r.setNum) : null,
+            rpe: r.rpe ? parseInt(r.rpe) : null,
+            muscleGroup: r.muscleGroup || null,
+            cardio: r.cardio || false,
+            summary: r.summary || null
+          };
+        } catch(rowErr) {
+          return null;
+        }
+      }).filter(Boolean).sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
       saveLocal();
       refreshSelects();
       renderDashboard();
@@ -1074,7 +1061,9 @@ async function loadFromSheets() {
     }
     setSyncIndicator('ok');
     setTimeout(() => setSyncIndicator('idle'), 3000);
-  } catch(e) { setSyncIndicator('error'); }
+  } catch(e) {
+    setSyncIndicator('error');
+  }
 }
 
 function save() { saveLocal(); }
