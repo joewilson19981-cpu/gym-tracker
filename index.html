@@ -716,18 +716,33 @@
         <button class="btn btn-sm btn-ghost" onclick="toggleBWGoalEdit()" id="bw-goal-edit-btn">Set goal</button>
       </div>
       <div id="bw-goal-edit" style="display:none; margin-bottom:12px;">
-        <div class="form-row two">
-          <div class="form-group" style="margin-bottom:0;">
-            <label>Target weight</label>
-            <input type="number" id="bw-goal-input" placeholder="70" min="0" step="0.1" inputmode="decimal">
-          </div>
-          <div class="form-group" style="margin-bottom:0;">
-            <label>Unit</label>
-            <select id="bw-goal-unit">
-              <option value="kg">kg</option>
-              <option value="lbs">lbs</option>
-              <option value="st">stone</option>
-            </select>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label>Unit</label>
+          <select id="bw-goal-unit" onchange="onBWGoalUnitChange()">
+            <option value="kg">kg</option>
+            <option value="lbs">lbs</option>
+            <option value="st">stone</option>
+          </select>
+        </div>
+        <div id="bw-goal-kg-group" class="form-group" style="margin-bottom:10px;">
+          <label>Target weight (kg)</label>
+          <input type="number" id="bw-goal-input" placeholder="75" min="0" step="0.1" inputmode="decimal">
+        </div>
+        <div id="bw-goal-lbs-group" class="form-group" style="display:none; margin-bottom:10px;">
+          <label>Target weight (lbs)</label>
+          <input type="number" id="bw-goal-lbs" placeholder="165" min="0" step="0.5" inputmode="decimal">
+        </div>
+        <div id="bw-goal-st-group" style="display:none; margin-bottom:10px;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);display:block;margin-bottom:7px;">Target weight (stone)</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label>Stone</label>
+              <input type="number" id="bw-goal-st" placeholder="12" min="0" step="1" inputmode="numeric">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label>Lbs</label>
+              <input type="number" id="bw-goal-st-lbs" placeholder="7" min="0" max="13" step="0.5" inputmode="decimal">
+            </div>
           </div>
         </div>
         <div style="display:flex; gap:8px; margin-top:8px;">
@@ -765,7 +780,7 @@
           <label>Weight (lbs)</label>
           <input type="number" id="bw-weight-lbs" placeholder="165" min="0" step="0.5" inputmode="decimal">
         </div>
-        <div id="bw-st-group" style="display:none; display:none;">
+        <div id="bw-st-group" style="display:none;">
           <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:var(--text3); margin-bottom:7px; display:block;">Weight (stone)</label>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
             <div class="form-group" style="margin-bottom:0;">
@@ -2053,8 +2068,8 @@ function updateTmplExercise(tmplIdx, exIdx, field, value) {
 
 // ── EXERCISE LIBRARY ──
 const EXERCISES = {
-  chest: ['Bench Press (Barbell)','Bench Press (Dumbbell)','Incline Bench Press (Barbell)','Incline Bench Press (Dumbbell)','Decline Bench Press','Chest Fly (Dumbbell)','Chest Fly (Cable)','Chest Press (Machine)','Pec Deck','Push Up','Cable Crossover','Dips (Chest)'],
-  back: ['Deadlift','Pull Up','Chin Up','Lat Pulldown','Seated Cable Row','Bent Over Row (Barbell)','Bent Over Row (Dumbbell)','Single Arm Dumbbell Row','T-Bar Row','Machine Row','Face Pull','Straight Arm Pulldown','Good Morning','Romanian Deadlift','Rack Pull','Shrugs (Barbell)','Shrugs (Dumbbell)'],
+  chest: ['Bench Press (Barbell)','Bench Press (Dumbbell)','Incline Bench Press (Barbell)','Incline Bench Press (Dumbbell)','Decline Bench Press','Chest Fly (Dumbbell)','Chest Fly (Cable)','Chest Press (Machine)','Pec Deck','Push Up','Pike Push Up','Cable Crossover','Dips (Chest)'],
+  back: ['Deadlift','Pull Up','Chin Up','Inverted Row','Lat Pulldown','Seated Cable Row','Bent Over Row (Barbell)','Bent Over Row (Dumbbell)','Single Arm Dumbbell Row','T-Bar Row','Machine Row','Face Pull','Straight Arm Pulldown','Good Morning','Romanian Deadlift','Rack Pull','Shrugs (Barbell)','Shrugs (Dumbbell)'],
   shoulders: ['Overhead Press (Barbell)','Overhead Press (Dumbbell)','Arnold Press','Lateral Raise (Dumbbell)','Lateral Raise (Cable)','Front Raise (Dumbbell)','Front Raise (Barbell)','Rear Delt Fly (Dumbbell)','Rear Delt Fly (Cable)','Shoulder Press (Machine)','Upright Row','Cable Lateral Raise'],
   biceps: ['Barbell Curl','Dumbbell Curl','Hammer Curl','Incline Dumbbell Curl','Concentration Curl','Preacher Curl','Cable Curl','EZ Bar Curl','Reverse Curl','Zottman Curl'],
   triceps: ['Tricep Pushdown (Cable)','Skull Crusher','Close Grip Bench Press','Overhead Tricep Extension (Dumbbell)','Overhead Tricep Extension (Cable)','Tricep Dips','Kickbacks (Dumbbell)','Diamond Push Up','Rope Pushdown'],
@@ -2255,23 +2270,54 @@ function renderPBs() {
 }
 
 // ── BW GOAL ──
+function onBWGoalUnitChange() {
+  const unit = document.getElementById('bw-goal-unit').value;
+  document.getElementById('bw-goal-kg-group').style.display = unit === 'kg' ? 'block' : 'none';
+  document.getElementById('bw-goal-lbs-group').style.display = unit === 'lbs' ? 'block' : 'none';
+  document.getElementById('bw-goal-st-group').style.display = unit === 'st' ? 'block' : 'none';
+}
+
 function toggleBWGoalEdit() {
   const edit = document.getElementById('bw-goal-edit');
   const btn = document.getElementById('bw-goal-edit-btn');
   const open = edit.style.display === 'none';
   edit.style.display = open ? 'block' : 'none';
   btn.textContent = open ? 'Cancel' : 'Set goal';
-  if (open && bwGoal) {
-    document.getElementById('bw-goal-input').value = fromKg(bwGoal.targetKg, bwGoal.unit);
-    document.getElementById('bw-goal-unit').value = bwGoal.unit;
+  if (open) {
+    const unit = bwGoal ? bwGoal.unit : (bwDisplayUnit || 'kg');
+    document.getElementById('bw-goal-unit').value = unit;
+    onBWGoalUnitChange();
+    if (bwGoal) {
+      if (unit === 'kg') {
+        document.getElementById('bw-goal-input').value = fromKg(bwGoal.targetKg, 'kg');
+      } else if (unit === 'lbs') {
+        document.getElementById('bw-goal-lbs').value = fromKg(bwGoal.targetKg, 'lbs');
+      } else if (unit === 'st') {
+        const totalLbs = bwGoal.targetKg * 2.20462;
+        document.getElementById('bw-goal-st').value = Math.floor(totalLbs / 14);
+        document.getElementById('bw-goal-st-lbs').value = +(totalLbs % 14).toFixed(1);
+      }
+    }
   }
 }
 
 function saveBWGoal() {
-  const val = parseFloat(document.getElementById('bw-goal-input').value);
   const unit = document.getElementById('bw-goal-unit').value;
-  if (isNaN(val) || val <= 0) { showToast('Enter a valid weight.', 'error'); return; }
-  const targetKg = unit === 'kg' ? val : unit === 'lbs' ? val * 0.453592 : val * 6.35029;
+  let targetKg;
+  if (unit === 'kg') {
+    const v = parseFloat(document.getElementById('bw-goal-input').value);
+    if (isNaN(v) || v <= 0) { showToast('Enter a valid weight.', 'error'); return; }
+    targetKg = v;
+  } else if (unit === 'lbs') {
+    const v = parseFloat(document.getElementById('bw-goal-lbs').value);
+    if (isNaN(v) || v <= 0) { showToast('Enter a valid weight.', 'error'); return; }
+    targetKg = v * 0.453592;
+  } else if (unit === 'st') {
+    const st = parseFloat(document.getElementById('bw-goal-st').value) || 0;
+    const lbs = parseFloat(document.getElementById('bw-goal-st-lbs').value) || 0;
+    if (!st && !lbs) { showToast('Enter a valid weight.', 'error'); return; }
+    targetKg = (st * 14 + lbs) * 0.453592;
+  }
   bwGoal = { targetKg, unit };
   saveBWGoalData();
   document.getElementById('bw-goal-edit').style.display = 'none';
