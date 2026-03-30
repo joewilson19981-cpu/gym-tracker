@@ -1036,12 +1036,18 @@ async function loadFromSheets() {
       logs = data.map(r => ({
         id: Number(r.id), date: r.date, exercise: r.exercise,
         weight: parseFloat(r.weight), reps: parseInt(r.reps),
-        sets: parseInt(r.sets), notes: r.notes || ''
+        sets: parseInt(r.sets), notes: r.notes || '',
+        targetReps: r.targetReps ? parseInt(r.targetReps) : null,
+        setNum: r.setNum ? parseInt(r.setNum) : null,
+        rpe: r.rpe ? parseInt(r.rpe) : null,
+        muscleGroup: r.muscleGroup || null,
+        cardio: r.cardio || false,
+        summary: r.summary || null
       })).sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
       saveLocal();
       refreshSelects();
       renderDashboard();
-      renderTodayLog();
+      renderHistory();
     }
     setSyncIndicator('ok');
     setTimeout(() => setSyncIndicator('idle'), 3000);
