@@ -997,8 +997,8 @@ function setSyncIndicator(status) {
 }
 
 async function sheetRequest(params) {
-  const url = SCRIPT_URL + '?' + new URLSearchParams(params).toString();
-  const res = await fetch(url);
+  const url = SCRIPT_URL + '?' + Object.keys(params).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k])).join('&');
+  const res = await fetch(url, { method: 'GET', mode: 'cors' });
   return res.json();
 }
 
