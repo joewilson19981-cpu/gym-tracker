@@ -632,7 +632,7 @@
   <!-- ══ LEADERBOARD ══ -->
   <div class="page" id="page-leaderboard">
     <div class="page-header">
-      <h1>Leaderboard</h1>
+      <h1>Leaderboards</h1>
       <p>Weekly total volume across the group</p>
     </div>
     <div class="card" style="margin-bottom:12px;">
@@ -864,17 +864,13 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
     Log
   </button>
-  <button class="nav-btn" onclick="switchPage('leaderboard',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
-    Ranks
-  </button>
   <button class="nav-btn" onclick="switchPage('templates',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
     Templates
   </button>
-  <button class="nav-btn" onclick="switchPage('history',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    History
+  <button class="nav-btn" onclick="switchPage('leaderboard',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
+    Leaderboards
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -1051,32 +1047,50 @@ const MUSCLE_KEYWORDS = {
   cardio: ['Treadmill','Rowing','Cycling','Stair','Elliptical','HIIT','Jump Rope','Battle Rope','Cross Trainer']
 };
 
-function inferMuscleGroup(exercise, existingGroup) {
-  if (existingGroup && existingGroup !== 'other' && existingGroup !== 'custom') return existingGroup;
-  const name = String(exercise || '').trim();
-  if (!name) return existingGroup || 'other';
+function normalizeMuscleGroup(group) {
+  const value = String(group || '').trim().toLowerCase();
+  if (!value || value === 'custom') return 'other';
+  const valid = ['other','chest','back','shoulders','biceps','triceps','legs','glutes','core','cardio','full'];
+  return valid.includes(value) ? value : 'other';
+}
 
-  const prior = logs.find(l => l.exercise === name && l.muscleGroup && l.muscleGroup !== 'other' && l.muscleGroup !== 'custom');
-  if (prior) return prior.muscleGroup;
+function inferMuscleGroup(exercise, existingGroup) {
+  const normalizedExisting = normalizeMuscleGroup(existingGroup);
+  if (normalizedExisting !== 'other') return normalizedExisting;
+
+  const name = String(exercise || '').trim();
+  if (!name) return normalizedExisting;
+
+  const prior = logs.find(l => l.exercise === name && normalizeMuscleGroup(l.muscleGroup) !== 'other');
+  if (prior) return normalizeMuscleGroup(prior.muscleGroup);
 
   if (typeof EXERCISES !== 'undefined') {
     for (const [group, list] of Object.entries(EXERCISES)) {
-      if (Array.isArray(list) && list.includes(name) && group !== 'custom') return group;
+      if (Array.isArray(list) && list.includes(name) && group !== 'custom') return normalizeMuscleGroup(group);
     }
   }
 
   if (typeof customExercises !== 'undefined') {
     for (const [group, list] of Object.entries(customExercises || {})) {
-      if (Array.isArray(list) && list.includes(name) && group !== 'other' && group !== 'custom') return group;
+      if (Array.isArray(list) && list.includes(name) && group !== 'other' && group !== 'custom') return normalizeMuscleGroup(group);
     }
   }
 
   const lower = name.toLowerCase();
   for (const [group, keywords] of Object.entries(MUSCLE_KEYWORDS)) {
-    if (keywords.some(k => lower.includes(k.toLowerCase()))) return group;
+    if (keywords.some(k => lower.includes(k.toLowerCase()))) return normalizeMuscleGroup(group);
   }
 
-  return existingGroup || 'other';
+  return normalizedExisting;
+}
+
+function formatTonnes(valueKg, decimals = 2) {
+  const tonnes = Number(valueKg || 0) / 1000;
+  return `${tonnes.toFixed(decimals)}<span style="font-size:14px;font-weight:400;color:var(--text3);">t</span>`;
+}
+
+function formatTonnesText(valueKg, decimals = 2) {
+  return `${(Number(valueKg || 0) / 1000).toFixed(decimals)}t`;
 }
 
 // ── DATA ──
@@ -1158,7 +1172,7 @@ async function loadFromSheets() {
             targetReps: r.targetReps ? parseInt(r.targetReps) : null,
             setNum: r.setNum ? parseInt(r.setNum) : null,
             rpe: r.rpe ? parseInt(r.rpe) : null,
-            muscleGroup: inferMuscleGroup(r.exercise || '', r.muscleGroup || null),
+            muscleGroup: inferMuscleGroup(r.exercise || '', normalizeMuscleGroup(r.muscleGroup || 'other')),
             cardio: r.cardio || false,
             summary: r.summary || null
           };
@@ -1232,7 +1246,7 @@ function renderLeaderboard(error) {
   el.innerHTML = leaderboardData.map((row, idx) => {
     const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
     const vol = Number(row.volume || 0);
-    const volText = vol >= 1000 ? (vol / 1000).toFixed(1) + 'k' : Math.round(vol);
+    const volText = formatTonnesText(vol);
     const sessions = Number(row.sessions || 0);
     return `<div class="pb-item">
       <div>
@@ -1240,7 +1254,7 @@ function renderLeaderboard(error) {
         <div class="pb-meta">${sessions} session${sessions !== 1 ? 's' : ''} this week</div>
       </div>
       <div class="pb-right">
-        <div class="pb-weight">${volText}kg</div>
+        <div class="pb-weight">${volText}</div>
         <div class="pb-1rm">weekly volume</div>
       </div>
     </div>`;
@@ -1286,7 +1300,7 @@ function renderDashboardHistory() {
         <div style="margin-bottom:8px;">
           <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Muscle group</div>
           <select id="dash-edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:8px 10px;">
-            <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
+            <option value="other" ${(normalizeMuscleGroup(l.muscleGroup)==='other')?'selected':''}>Other</option>
             <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
             <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
             <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
@@ -1445,8 +1459,7 @@ function renderDashboard() {
   // Volume this week vs last week
   const volThisWeek = logs.filter(l => l.date >= daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
   const volLastWeek = logs.filter(l => l.date >= daysAgo(14) && l.date < daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
-  const volThisK = volThisWeek >= 1000 ? (volThisWeek/1000).toFixed(1)+'k' : Math.round(volThisWeek);
-  document.getElementById('d-vol-week').innerHTML = volThisK + '<span style="font-size:14px;font-weight:400;color:var(--text3);">kg</span>';
+  document.getElementById('d-vol-week').innerHTML = formatTonnes(volThisWeek);
   const trendEl = document.getElementById('d-vol-trend');
   if (!volLastWeek) {
     trendEl.textContent = '—'; trendEl.style.color = 'var(--text3)';
@@ -1825,9 +1838,9 @@ function saveExercise() {
 
   // Save each set as individual log entry
   const group = document.getElementById('inp-group').value;
-  const customMuscle = group === 'custom'
+  const customMuscle = normalizeMuscleGroup(group === 'custom'
     ? (document.getElementById('inp-custom-muscle') ? document.getElementById('inp-custom-muscle').value : 'other')
-    : group;
+    : group);
 
   // Remember custom exercise for this muscle group
   if (group === 'custom' && customMuscle && customMuscle !== 'other') {
@@ -2485,7 +2498,7 @@ function renderHistory() {
           <div class="form-group" style="margin-bottom:8px;">
             <label>Muscle group</label>
             <select id="edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;">
-              <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
+              <option value="other" ${(normalizeMuscleGroup(l.muscleGroup)==='other')?'selected':''}>Other</option>
               <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
               <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
               <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
@@ -2548,7 +2561,7 @@ function renderHistory() {
         <div class="form-group" style="margin-bottom:8px;">
           <label>Muscle group</label>
           <select id="edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;">
-            <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
+            <option value="other" ${(normalizeMuscleGroup(l.muscleGroup)==='other')?'selected':''}>Other</option>
             <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
             <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
             <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
@@ -2597,7 +2610,7 @@ function saveDashboardLogEdit(id) {
   if (!isNaN(weight)) logs[idx].weight = weight;
   if (!isNaN(reps)) logs[idx].reps = reps;
   if (!isNaN(target)) logs[idx].targetReps = target;
-  if (muscle) { logs[idx].muscleGroup = muscle; rememberCustomExercise(logs[idx].exercise, muscle); }
+  if (muscle) { const normalizedMuscle = normalizeMuscleGroup(muscle); logs[idx].muscleGroup = normalizedMuscle; rememberCustomExercise(logs[idx].exercise, normalizedMuscle); }
   logs[idx].notes = notes;
   save();
   pushEntry(logs[idx]);
@@ -2618,7 +2631,7 @@ function saveLogEdit(id) {
   if (!isNaN(weight)) logs[idx].weight = weight;
   if (!isNaN(reps)) logs[idx].reps = reps;
   if (!isNaN(target)) logs[idx].targetReps = target;
-  if (muscle) { logs[idx].muscleGroup = muscle; rememberCustomExercise(logs[idx].exercise, muscle); }
+  if (muscle) { const normalizedMuscle = normalizeMuscleGroup(muscle); logs[idx].muscleGroup = normalizedMuscle; rememberCustomExercise(logs[idx].exercise, normalizedMuscle); }
   logs[idx].notes = notes;
   save();
   pushEntry(logs[idx]); // sync update to sheets
@@ -3106,7 +3119,6 @@ function switchPage(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
   if (name === 'leaderboard') { loadLeaderboard(true); }
-  if (name === 'history') { refreshSelects(); renderHistory(); }
   if (name === 'progress') { refreshSelects(); renderProgress(); }
   if (name === 'pbs') renderPBs();
   if (name === 'dashboard') renderDashboard();
