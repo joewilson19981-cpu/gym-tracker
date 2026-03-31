@@ -356,7 +356,7 @@
     <!-- History -->
     <div class=\"section-title\">History</div>
     <div class=\"card\">
-      <div id=\"dash-history\"></div>
+      <div id="dash-history"></div>
     </div>
   </div>
 
@@ -630,7 +630,7 @@
   </div>
 
   <!-- ══ LEADERBOARD ══ -->
-  <div class="page" id="page-history">
+  <div class="page" id="page-leaderboard">
     <div class="page-header">
       <h1>Leaderboard</h1>
       <p>Weekly total volume across the group</p>
@@ -646,6 +646,28 @@
     </div>
     <div class="card">
       <div id="leaderboard-list"></div>
+    </div>
+  </div>
+
+  <!-- ══ HISTORY ══ -->
+  <div class="page" id="page-history">
+    <div class="page-header">
+      <h1>History</h1>
+      <p>All your logged sessions</p>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <select id="filter-ex" onchange="renderHistory()" style="flex:1;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:10px 12px;">
+        <option value="">All exercises</option>
+      </select>
+      <select id="filter-period" onchange="renderHistory()" style="flex:1;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:10px 12px;">
+        <option value="all">All time</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </div>
+    <div class="card">
+      <div id="history-list"></div>
     </div>
   </div>
 
@@ -842,13 +864,17 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
     Log
   </button>
+  <button class="nav-btn" onclick="switchPage('leaderboard',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
+    Ranks
+  </button>
   <button class="nav-btn" onclick="switchPage('templates',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
     Templates
   </button>
   <button class="nav-btn" onclick="switchPage('history',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
-    Leaderboard
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    History
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -949,6 +975,7 @@ function attemptLogin() {
   logs = JSON.parse(localStorage.getItem('gymLogs_' + key) || '[]');
   loadBWLocal();
   loadGoals();
+  loadCustomExercises();
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('current-user-name').textContent = name;
   document.getElementById('inp-date').value = todayStr();
@@ -979,12 +1006,37 @@ function checkAutoLogin() {
       loadBWLocal();
       loadTemplatesLocal();
       loadGoals();
+      loadCustomExercises();
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('current-user-name').textContent = u.name;
       return true;
     } catch(e) {}
   }
   return false;
+}
+
+// ── CUSTOM EXERCISES ──
+let customExercises = {};
+
+function loadCustomExercises() {
+  if (!currentUser) return;
+  customExercises = JSON.parse(localStorage.getItem('gymCustomExercises_' + currentUser.key) || '{}');
+}
+
+function saveCustomExercises() {
+  if (!currentUser) return;
+  localStorage.setItem('gymCustomExercises_' + currentUser.key, JSON.stringify(customExercises));
+}
+
+function rememberCustomExercise(exercise, muscleGroup) {
+  if (!exercise || !muscleGroup || muscleGroup === 'other' || muscleGroup === 'custom') return;
+  if (!customExercises[muscleGroup]) customExercises[muscleGroup] = [];
+  const exists = customExercises[muscleGroup].some(e => e.toLowerCase() === exercise.toLowerCase());
+  if (!exists) {
+    customExercises[muscleGroup].push(exercise);
+    customExercises[muscleGroup].sort((a,b) => a.localeCompare(b));
+    saveCustomExercises();
+  }
 }
 
 // ── DATA ──
@@ -1155,7 +1207,7 @@ function renderLeaderboard(error) {
 function renderDashboardHistory() {
   const el = document.getElementById('dash-history');
   if (!el) return;
-  const filtered = [...logs].sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id).slice(0, 12);
+  const filtered = [...logs].sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id).slice(0, 20);
   if (!filtered.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>Your full workout history will show here.</div>';
     return;
@@ -1163,16 +1215,72 @@ function renderDashboardHistory() {
   el.innerHTML = filtered.map(l => {
     const isCardio = l.cardio || CARDIO_EXERCISES[l.exercise];
     const detail = isCardio ? (l.summary || l.notes || l.reps + ' mins') : `${l.weight}kg × ${l.reps} reps`;
-    return `<div class="log-item">
+    return `<div class="log-item" id="dash-log-item-${l.id}">
       <div class="log-top">
         <div>
           <div class="log-exercise">${l.exercise}</div>
           <div class="log-date">${l.date}${l.setNum ? ' · Set ' + l.setNum : ''}</div>
         </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm btn-ghost" onclick="toggleDashEdit(${l.id})">✏️</button>
+          <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
+        </div>
       </div>
       <div class="log-detail">${detail}</div>
+      <div id="dash-edit-${l.id}" style="display:none;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border);">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Weight (kg)</div>
+            <input type="number" id="dash-edit-weight-${l.id}" value="${l.weight||''}" min="0" step="0.5" inputmode="decimal"
+              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Reps</div>
+            <input type="number" id="dash-edit-reps-${l.id}" value="${l.reps||''}" min="0" inputmode="numeric"
+              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
+          </div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Muscle group</div>
+          <select id="dash-edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:8px 10px;">
+            <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
+            <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
+            <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
+            <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
+            <option value="biceps" ${l.muscleGroup==='biceps'?'selected':''}>Biceps</option>
+            <option value="triceps" ${l.muscleGroup==='triceps'?'selected':''}>Triceps</option>
+            <option value="legs" ${l.muscleGroup==='legs'?'selected':''}>Legs</option>
+            <option value="glutes" ${l.muscleGroup==='glutes'?'selected':''}>Glutes</option>
+            <option value="core" ${l.muscleGroup==='core'?'selected':''}>Core</option>
+            <option value="cardio" ${l.muscleGroup==='cardio'?'selected':''}>Cardio</option>
+            <option value="full" ${l.muscleGroup==='full'?'selected':''}>Full Body</option>
+          </select>
+        </div>
+        <button class="btn btn-accent btn-sm" style="width:100%;" onclick="saveDashEdit(${l.id})">Save changes</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+function toggleDashEdit(id) {
+  const el = document.getElementById('dash-edit-' + id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function saveDashEdit(id) {
+  const idx = logs.findIndex(l => l.id === id);
+  if (idx === -1) return;
+  const w = parseFloat(document.getElementById('dash-edit-weight-' + id)?.value);
+  const r = parseInt(document.getElementById('dash-edit-reps-' + id)?.value);
+  const m = document.getElementById('dash-edit-muscle-' + id)?.value;
+  if (!isNaN(w)) logs[idx].weight = w;
+  if (!isNaN(r)) logs[idx].reps = r;
+  if (m) logs[idx].muscleGroup = m;
+  save();
+  if (typeof pushEntry === 'function') pushEntry(logs[idx]);
+  renderDashboardHistory();
+  renderDashboard();
+  showToast('Entry updated!');
 }
 
 function save() { saveLocal(); }
@@ -1464,15 +1572,64 @@ function renderSuggestions() {
 }
 
 function quickFillExercise(name) {
-  // find last log of this exercise and prefill weight/reps
+  // Find last log of this exercise and prefill weight/reps
   const last = logs.find(l => l.exercise === name);
   if (last) {
     document.getElementById('inp-weight').value = last.weight;
-    document.getElementById('inp-target-reps').value = last.reps;
+    document.getElementById('inp-target-reps').value = last.targetReps || last.reps;
   }
-  document.getElementById('inp-group').value = 'custom';
-  populateExerciseDropdown();
-  document.getElementById('inp-exercise').value = name;
+
+  // Try to find the correct muscle group for this exercise
+  let foundGroup = null;
+
+  // 1. Check if it was logged with a muscleGroup before
+  const logWithGroup = logs.find(l => l.exercise === name && l.muscleGroup && l.muscleGroup !== 'other' && l.muscleGroup !== '');
+  if (logWithGroup) foundGroup = logWithGroup.muscleGroup;
+
+  // 2. Check if it's a known exercise in the library
+  if (!foundGroup) {
+    for (const [grp, list] of Object.entries(EXERCISES)) {
+      if (list.includes(name)) { foundGroup = grp; break; }
+    }
+  }
+
+  // 3. Check custom exercises memory
+  if (!foundGroup && typeof customExercises !== 'undefined') {
+    for (const [grp, list] of Object.entries(customExercises)) {
+      if (list.includes(name)) { foundGroup = grp; break; }
+    }
+  }
+
+  if (foundGroup && foundGroup !== 'custom' && foundGroup !== 'other') {
+    document.getElementById('inp-group').value = foundGroup;
+    populateExerciseDropdown();
+    // Select in dropdown if it exists there, otherwise show as custom
+    const sel = document.getElementById('inp-exercise-select');
+    if (sel) {
+      const opt = Array.from(sel.options).find(o => o.value === name);
+      if (opt) {
+        sel.value = name;
+        if (foundGroup === 'cardio') switchToCardioForm(name);
+        else { switchToWeightsForm(); showExercisePB(name); }
+      } else {
+        // Known group but custom exercise name — show custom input
+        document.getElementById('inp-group').value = 'custom';
+        populateExerciseDropdown();
+        document.getElementById('inp-exercise').value = name;
+        if (document.getElementById('inp-custom-muscle')) {
+          document.getElementById('inp-custom-muscle').value = foundGroup;
+        }
+        switchToWeightsForm();
+      }
+    }
+  } else {
+    // No group found — just fill as custom
+    document.getElementById('inp-group').value = 'custom';
+    populateExerciseDropdown();
+    document.getElementById('inp-exercise').value = name;
+    switchToWeightsForm();
+  }
+
   document.getElementById('inp-exercise').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -1517,10 +1674,11 @@ function populateExerciseDropdown() {
     switchToWeightsForm(); return;
   }
   customGroup.style.display = 'none';
-  document.getElementById('exercise-custom-muscle-group').style.display = 'none'; dropGroup.style.display = 'block';
-  const list = EXERCISES[group] || [];
-  sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
-  // Switch form type based on group
+  document.getElementById('exercise-custom-muscle-group').style.display = 'none';
+  dropGroup.style.display = 'block';
+  const list = (EXERCISES[group] || []).concat(customExercises[group] || []);
+  const unique = [...new Set(list)].sort((a,b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">Select exercise...</option>' + unique.map(e => `<option value="${e}">${e}</option>`).join('');
   if (group === 'cardio') {
     sel.onchange = () => {
       const ex = sel.value;
@@ -1571,16 +1729,17 @@ function buildSetRows() {
 
   let html = '';
   for (let i = 1; i <= setsCount; i++) {
-    html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);">
-      <div style="font-size:13px;font-weight:600;color:var(--text3);min-width:44px;">Set ${i}</div>
-      <div style="flex:1;">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Actual reps</div>
-        <input type="number" class="set-reps-input" id="set-reps-${i}" value="${targetReps}" min="0" inputmode="numeric"
-          style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
+    html += `<div style="display:grid;grid-template-columns:44px 1fr 1fr;align-items:center;gap:8px;padding:10px 0;border-bottom:0.5px solid var(--border);">
+      <div style="font-size:13px;font-weight:600;color:var(--text3);">Set ${i}</div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-align:center;">Weight (kg)</div>
+        <input type="number" class="set-weight-input" id="set-weight-${i}" value="${weight}" min="0" step="0.5" inputmode="decimal"
+          style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 4px;outline:none;text-align:center;">
       </div>
-      <div style="font-size:12px;color:var(--text3);text-align:center;">
-        <div>Target</div>
-        <div style="font-size:16px;font-weight:600;color:var(--text2);">${targetReps}</div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-align:center;">Reps <span style="color:var(--text3);">(target: ${targetReps})</span></div>
+        <input type="number" class="set-reps-input" id="set-reps-${i}" value="${targetReps}" min="0" inputmode="numeric"
+          style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 4px;outline:none;text-align:center;">
       </div>
     </div>`;
   }
@@ -1608,29 +1767,37 @@ function saveExercise() {
 
   const setInputs = document.querySelectorAll('.set-reps-input');
   if (!setInputs.length) { showToast('Build your sets first.', 'error'); return; }
+  const weightInputs = document.querySelectorAll('.set-weight-input');
 
   const sets = [];
   setInputs.forEach((inp, i) => {
     const actual = parseInt(inp.value) || 0;
-    sets.push({ setNum: i + 1, targetReps, actualReps: actual, hit: actual >= targetReps });
+    const setWeight = weightInputs[i] ? parseFloat(weightInputs[i].value) || weight : weight;
+    sets.push({ setNum: i + 1, targetReps, actualReps: actual, weight: setWeight, hit: actual >= targetReps });
   });
 
-  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * weight, 0));
+  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * st.weight, 0));
   const allHit = sets.every(s => s.hit);
   const completion = Math.round((sets.reduce((s,st) => s + Math.min(st.actualReps, st.targetReps), 0) / sets.reduce((s,st) => s + st.targetReps, 0)) * 100);
 
   // Save each set as individual log entry
   const group = document.getElementById('inp-group').value;
   const customMuscle = group === 'custom'
-    ? document.getElementById('inp-custom-muscle').value
+    ? (document.getElementById('inp-custom-muscle') ? document.getElementById('inp-custom-muscle').value : 'other')
     : group;
+
+  // Remember custom exercise for this muscle group
+  if (group === 'custom' && customMuscle && customMuscle !== 'other') {
+    rememberCustomExercise(exercise, customMuscle);
+  }
+
   const baseId = Date.now();
   sets.forEach((st, i) => {
     const entry = {
       id: baseId + (i * 100),
       date,
       exercise,
-      weight,
+      weight: st.weight,
       reps: st.actualReps,
       targetReps: st.targetReps,
       sets: 1,
@@ -2363,7 +2530,8 @@ function renderHistory() {
 }
 
 function toggleEditLog(id) {
-  const el = document.getElementById('log-edit-' + id);
+  // Try both possible ID patterns
+  const el = document.getElementById('dash-log-edit-' + id) || document.getElementById('log-edit-' + id);
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
@@ -2894,7 +3062,8 @@ function switchPage(name, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'history') { loadLeaderboard(); }
+  if (name === 'leaderboard') { loadLeaderboard(true); }
+  if (name === 'history') { refreshSelects(); renderHistory(); }
   if (name === 'progress') { refreshSelects(); renderProgress(); }
   if (name === 'pbs') renderPBs();
   if (name === 'dashboard') renderDashboard();
@@ -2903,7 +3072,6 @@ function switchPage(name, btn) {
     document.getElementById('inp-date').value = todayStr();
     renderSuggestions();
     refreshTemplateSelects();
-    // reset session if date changed
     sessionExercises = [];
     renderSessionLog();
   }
