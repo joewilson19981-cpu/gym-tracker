@@ -1391,16 +1391,19 @@ async function loadLeaderboard(forceRefresh = false) {
       listEl.innerHTML = '<div class="empty"><div class="empty-icon">🏋️</div>No leaderboard data yet.</div>';
       return;
     }
-    listEl.innerHTML = data.map((u, i) => `
+    listEl.innerHTML = data.map((u, i) => {
+      const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      return `
       <div class="pb-item">
         <div>
-          <div class="pb-name">#${i+1} ${u.name || u.user}</div>
+          <div class="pb-name">${rank} ${u.name || u.user}</div>
           <div class="pb-meta">${u.sessions || 0} session${(u.sessions||0)!==1?'s':''} this week</div>
         </div>
         <div class="pb-right">
           <div class="pb-weight">${formatMassReadable(Number(u.volume||0))}</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
     listEl.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>Could not load leaderboard.</div>';
   }
