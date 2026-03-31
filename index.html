@@ -7,7 +7,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Gym Tracker">
 <title>Gym Tracker</title>
-<meta name="app-version" content="leaderboard-homehistory-per-set-weight-v2">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
@@ -227,7 +226,6 @@
 </style>
 </head>
 <body>
-<!-- build: leaderboard-homehistory-per-set-weight-v2 -->
 
 <!-- ══ LOGIN SCREEN ══ -->
 <div id="login-screen">
@@ -353,12 +351,6 @@
     <div class="section-title">Recent activity</div>
     <div class="card">
       <div id="dash-recent"></div>
-    </div>
-
-    <!-- History -->
-    <div class="section-title">History</div>
-    <div class="card">
-      <div id="dash-history"></div>
     </div>
   </div>
 
@@ -631,23 +623,26 @@
     <div id="starter-templates-list" style="margin-bottom:20px;"></div>
   </div>
 
-  <!-- ══ LEADERBOARD ══ -->
+
+  <!-- ══ HISTORY ══ -->
   <div class="page" id="page-history">
     <div class="page-header">
-      <h1>Leaderboard</h1>
-      <p>Weekly total volume across the group</p>
+      <h1>History</h1>
+      <p>All your logged sessions</p>
     </div>
-    <div class="card" style="margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-        <div>
-          <div class="card-label" style="margin-bottom:4px;">This week</div>
-          <div style="font-size:13px;color:var(--text2);" id="leaderboard-subtitle">Mon–Sun total lifted volume</div>
-        </div>
-        <button class="btn btn-sm btn-ghost" onclick="loadLeaderboard(true)">Refresh</button>
-      </div>
+    <div class="filter-row">
+      <select id="filter-ex" onchange="renderHistory()">
+        <option value="">All exercises</option>
+      </select>
+      <select id="filter-period" onchange="renderHistory()">
+        <option value="all">All time</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
     </div>
     <div class="card">
-      <div id="leaderboard-list"></div>
+      <div id="history-list"></div>
     </div>
   </div>
 
@@ -849,8 +844,8 @@
     Templates
   </button>
   <button class="nav-btn" onclick="switchPage('history',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
-    Leaderboard
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    History
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -943,7 +938,6 @@ function attemptLogin() {
   renderSuggestions();
   loadFromSheets();
   loadBWFromSheets();
-  loadLeaderboard();
 }
 
 function switchUser() {
@@ -981,7 +975,6 @@ function checkAutoLogin() {
 let logs = [];
 let pChart = null, vChart = null;
 let syncStatus = 'idle';
-let leaderboardData = [];
 
 function saveLocal() {
   if (!currentUser) return;
@@ -1064,205 +1057,13 @@ async function loadFromSheets() {
       saveLocal();
       refreshSelects();
       renderDashboard();
-      renderDashboardHistory();
+      renderHistory();
     }
     setSyncIndicator('ok');
     setTimeout(() => setSyncIndicator('idle'), 3000);
   } catch(e) {
     setSyncIndicator('error');
   }
-}
-
-
-async function loadLeaderboard(forceRefresh = false) {
-  const el = document.getElementById('leaderboard-list');
-  if (!el) return;
-  if (!currentUser) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div>Log in to view the leaderboard.</div>';
-    return;
-  }
-  if (!forceRefresh && leaderboardData.length) {
-    renderLeaderboard();
-    return;
-  }
-  el.innerHTML = '<div style="font-size:13px;color:var(--text3);">Loading leaderboard...</div>';
-  try {
-    const data = await sheetRequest({ action: 'getLeaderboard' });
-    leaderboardData = Array.isArray(data) ? data : [];
-    renderLeaderboard();
-  } catch (e) {
-    leaderboardData = [];
-    renderLeaderboard(e);
-  }
-}
-
-function startOfWeekDate() {
-  const d = new Date();
-  const day = d.getDay();
-  d.setHours(0,0,0,0);
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d;
-}
-
-function formatVolumeCompact(kg) {
-  const value = Number(kg || 0);
-  if (value >= 1000000) return (value / 1000000).toFixed(2).replace(/\.00$/, '') + 'k tonnes';
-  if (value >= 1000) return (value / 1000).toFixed(value >= 10000 ? 1 : 2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1') + ' tonnes';
-  return Math.round(value) + 'kg';
-}
-
-function renderLeaderboard(error) {
-  const el = document.getElementById('leaderboard-list');
-  const sub = document.getElementById('leaderboard-subtitle');
-  if (!el) return;
-  const monday = startOfWeekDate();
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const fmt = d => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  if (sub) sub.textContent = `${fmt(monday)} – ${fmt(sunday)} total lifted volume`;
-  if (error) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div>The leaderboard needs the new Apps Script action <strong>getLeaderboard</strong> before it can load.</div>';
-    return;
-  }
-  if (!leaderboardData.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div>No leaderboard data yet this week.</div>';
-    return;
-  }
-  el.innerHTML = leaderboardData.map((row, idx) => {
-    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
-    const vol = Number(row.volume || 0);
-    const volText = formatVolumeCompact(vol);
-    const sessions = Number(row.sessions || 0);
-    return `<div class="pb-item">
-      <div>
-        <div class="pb-name">${medal} ${row.name || row.user || 'Unknown'}</div>
-        <div class="pb-meta">${sessions} session${sessions !== 1 ? 's' : ''} this week</div>
-      </div>
-      <div class="pb-right">
-        <div class="pb-weight">${volText}</div>
-        <div class="pb-1rm">weekly volume</div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function renderDashboardHistory() {
-  const el = document.getElementById('dash-history');
-  if (!el) return;
-  const filtered = [...logs].sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
-  if (!filtered.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>Your full workout history will show here.</div>';
-    return;
-  }
-  el.innerHTML = filtered.map(l => {
-    const pr = isPR(l);
-    const isCardio = l.cardio || l.exercise === 'Treadmill Run' || CARDIO_EXERCISES[l.exercise];
-    const muscleLabel = l.muscleGroup && l.muscleGroup !== 'other'
-      ? `<span class="badge" style="background:var(--bg4);color:var(--text3);border:0.5px solid var(--border2);text-transform:capitalize;">${l.muscleGroup}</span>` : '';
-    if (isCardio) {
-      return `<div class="log-item" id="log-item-${l.id}">
-        <div class="log-top">
-          <div>
-            <div class="log-exercise">${l.exercise}</div>
-            <div class="log-date">${l.date}</div>
-          </div>
-          <div style="display:flex;gap:6px;">
-            <button class="btn btn-sm btn-ghost" onclick="toggleEditLog(${l.id})">✏️</button>
-            <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
-          </div>
-        </div>
-        <div class="log-detail">${l.summary || l.notes || l.reps + ' mins'}</div>
-        <div class="log-badges">${muscleLabel}</div>
-        <div id="log-edit-${l.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:0.5px solid var(--border);">
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:8px;">Edit entry</div>
-          <div class="form-group" style="margin-bottom:8px;">
-            <label>Muscle group</label>
-            <select id="edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;">
-              <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
-              <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
-              <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
-              <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
-              <option value="biceps" ${l.muscleGroup==='biceps'?'selected':''}>Biceps</option>
-              <option value="triceps" ${l.muscleGroup==='triceps'?'selected':''}>Triceps</option>
-              <option value="legs" ${l.muscleGroup==='legs'?'selected':''}>Legs</option>
-              <option value="glutes" ${l.muscleGroup==='glutes'?'selected':''}>Glutes</option>
-              <option value="core" ${l.muscleGroup==='core'?'selected':''}>Core</option>
-              <option value="cardio" ${l.muscleGroup==='cardio'?'selected':''}>Cardio</option>
-              <option value="full" ${l.muscleGroup==='full'?'selected':''}>Full Body</option>
-            </select>
-          </div>
-          <button class="btn btn-accent btn-sm" style="width:100%;" onclick="saveLogEdit(${l.id})">Save changes</button>
-        </div>
-      </div>`;
-    }
-    const vol = Math.round(l.weight * l.reps);
-    const hasTarget = l.targetReps && l.targetReps !== l.reps;
-    const repsDisplay = hasTarget ? `${l.reps}/${l.targetReps} reps` : `${l.reps} reps`;
-    const hit = !hasTarget || l.reps >= l.targetReps;
-    return `<div class="log-item" id="log-item-${l.id}">
-      <div class="log-top">
-        <div>
-          <div class="log-exercise">${l.exercise}</div>
-          <div class="log-date">${l.date}${l.setNum ? ` · Set ${l.setNum}` : ''}</div>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <button class="btn btn-sm btn-ghost" onclick="toggleEditLog(${l.id})">✏️</button>
-          <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
-        </div>
-      </div>
-      <div class="log-detail">${l.weight}kg × <span style="color:${hit?'var(--green)':'var(--red)'}">${repsDisplay}</span></div>
-      ${l.notes ? `<div class="log-notes">${l.notes}</div>` : ''}
-      <div class="log-badges">
-        ${pr ? '<span class="badge badge-pr">PR</span>' : ''}
-        <span class="badge badge-vol">${vol}kg vol</span>
-        <span class="badge badge-1rm">~${calc1RM(l.weight, l.reps)}kg 1RM</span>
-        ${l.rpe ? `<span class="badge" style="background:rgba(232,255,71,0.1);color:var(--accent);border:0.5px solid rgba(232,255,71,0.25);">RPE ${l.rpe}</span>` : ''}
-        ${muscleLabel}
-      </div>
-      <div id="log-edit-${l.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:0.5px solid var(--border);">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:8px;">Edit entry</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
-          <div>
-            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Weight (kg)</div>
-            <input type="number" id="edit-weight-${l.id}" value="${l.weight}" min="0" step="0.5" inputmode="decimal"
-              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
-          </div>
-          <div>
-            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Actual reps</div>
-            <input type="number" id="edit-reps-${l.id}" value="${l.reps}" min="0" inputmode="numeric"
-              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
-          </div>
-          <div>
-            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Target reps</div>
-            <input type="number" id="edit-target-${l.id}" value="${l.targetReps || l.reps}" min="0" inputmode="numeric"
-              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
-          </div>
-        </div>
-        <div class="form-group" style="margin-bottom:8px;">
-          <label>Muscle group</label>
-          <select id="edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;">
-            <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
-            <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
-            <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
-            <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
-            <option value="biceps" ${l.muscleGroup==='biceps'?'selected':''}>Biceps</option>
-            <option value="triceps" ${l.muscleGroup==='triceps'?'selected':''}>Triceps</option>
-            <option value="legs" ${l.muscleGroup==='legs'?'selected':''}>Legs</option>
-            <option value="glutes" ${l.muscleGroup==='glutes'?'selected':''}>Glutes</option>
-            <option value="core" ${l.muscleGroup==='core'?'selected':''}>Core</option>
-            <option value="cardio" ${l.muscleGroup==='cardio'?'selected':''}>Cardio</option>
-            <option value="full" ${l.muscleGroup==='full'?'selected':''}>Full Body</option>
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom:8px;">
-          <label>Notes</label>
-          <input type="text" id="edit-notes-${l.id}" value="${(l.notes||'').replace(/"/g,'&quot;')}" placeholder="Notes..."
-            style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;outline:none;">
-        </div>
-        <button class="btn btn-accent btn-sm" style="width:100%;" onclick="saveLogEdit(${l.id})">Save changes</button>
-      </div>
-    </div>`;
-  }).join('');
 }
 
 function save() { saveLocal(); }
@@ -1489,16 +1290,10 @@ function renderDashboard() {
   // Week grid
   renderWeekGrid();
 
-  renderDashboardHistory();
-
   // Recent activity
   const recent = sorted.slice(0, 5);
   const rec = document.getElementById('dash-recent');
-  if (!recent.length) {
-    rec.innerHTML = '<div class="empty"><div class="empty-icon">💪</div>Log your first session to see activity here.</div>';
-    renderDashboardHistory();
-    return;
-  }
+  if (!recent.length) { rec.innerHTML = '<div class="empty"><div class="empty-icon">💪</div>Log your first session to see activity here.</div>'; return; }
   rec.innerHTML = recent.map(l => {
     const pr = isPR(l);
     const isCardio = l.cardio || CARDIO_EXERCISES[l.exercise];
@@ -1514,7 +1309,6 @@ function renderDashboard() {
       </div>
     </div>`;
   }).join('');
-  renderDashboardHistory();
 }
 
 function calcBestStreak() {
@@ -1665,9 +1459,14 @@ function buildSetRows() {
 
   let html = '';
   for (let i = 1; i <= setsCount; i++) {
-    html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);">
-      <div style="font-size:13px;font-weight:600;color:var(--text3);min-width:44px;">Set ${i}</div>
-      <div style="flex:1;">
+    html += `<div style="display:grid;grid-template-columns:50px 1fr 1fr 56px;gap:10px;align-items:end;padding:10px 0;border-bottom:0.5px solid var(--border);">
+      <div style="font-size:13px;font-weight:600;color:var(--text3);">Set ${i}</div>
+      <div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Weight (kg)</div>
+        <input type="number" class="set-weight-input" id="set-weight-${i}" value="${weight}" min="0" step="0.5" inputmode="decimal"
+          style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
+      </div>
+      <div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Actual reps</div>
         <input type="number" class="set-reps-input" id="set-reps-${i}" value="${targetReps}" min="0" inputmode="numeric"
           style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
@@ -1692,24 +1491,33 @@ function clearRPE() {
 
 function saveExercise() {
   const exercise = getExerciseName();
-  const weight = parseFloat(document.getElementById('inp-weight').value);
   const targetReps = parseInt(document.getElementById('inp-target-reps').value);
   const notes = document.getElementById('inp-notes').value.trim();
   const rpe = rpeSkipped ? null : parseInt(document.getElementById('inp-rpe').value);
   const date = document.getElementById('inp-date').value;
 
-  if (!exercise || isNaN(weight) || isNaN(targetReps)) { showToast('Missing exercise details.', 'error'); return; }
+  if (!exercise || isNaN(targetReps)) { showToast('Missing exercise details.', 'error'); return; }
 
-  const setInputs = document.querySelectorAll('.set-reps-input');
-  if (!setInputs.length) { showToast('Build your sets first.', 'error'); return; }
+  const repInputs = document.querySelectorAll('.set-reps-input');
+  const weightInputs = document.querySelectorAll('.set-weight-input');
+  if (!repInputs.length || !weightInputs.length || repInputs.length !== weightInputs.length) { showToast('Build your sets first.', 'error'); return; }
 
   const sets = [];
-  setInputs.forEach((inp, i) => {
+  repInputs.forEach((inp, i) => {
     const actual = parseInt(inp.value) || 0;
-    sets.push({ setNum: i + 1, targetReps, actualReps: actual, hit: actual >= targetReps });
+    const setWeight = parseFloat(weightInputs[i].value);
+    sets.push({
+      setNum: i + 1,
+      targetReps,
+      actualReps: actual,
+      weight: isNaN(setWeight) ? 0 : setWeight,
+      hit: actual >= targetReps
+    });
   });
 
-  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * weight, 0));
+  if (sets.some(s => s.weight <= 0)) { showToast('Enter a valid weight for each set.', 'error'); return; }
+
+  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * st.weight, 0));
   const allHit = sets.every(s => s.hit);
   const completion = Math.round((sets.reduce((s,st) => s + Math.min(st.actualReps, st.targetReps), 0) / sets.reduce((s,st) => s + st.targetReps, 0)) * 100);
 
@@ -1719,12 +1527,13 @@ function saveExercise() {
     ? document.getElementById('inp-custom-muscle').value
     : group;
   const baseId = Date.now();
+  let firstPrWeight = null;
   sets.forEach((st, i) => {
     const entry = {
       id: baseId + (i * 100),
       date,
       exercise,
-      weight,
+      weight: st.weight,
       reps: st.actualReps,
       targetReps: st.targetReps,
       sets: 1,
@@ -1737,12 +1546,14 @@ function saveExercise() {
     logs.unshift(entry);
     save();
     pushEntry(entry);
-    if (pr && i === 0) showToast(`🏆 New PR on ${exercise}! ${weight}kg`, 'pr');
+    if (pr && firstPrWeight === null) firstPrWeight = st.weight;
   });
 
   // Add to session display
-  sessionExercises.push({ exercise, weight, sets, targetReps, notes, rpe, totalVol, completion, allHit });
+  sessionExercises.push({ exercise, weight: sets[0]?.weight || 0, sets, targetReps, notes, rpe, totalVol, completion, allHit });
   renderSessionLog();
+
+  if (firstPrWeight !== null) showToast(`🏆 New PR on ${exercise}! ${firstPrWeight}kg`, 'pr');
 
   // Reset form
   document.getElementById('inp-group').value = '';
@@ -1787,14 +1598,16 @@ function renderSessionLog() {
         background:${s.hit ? 'rgba(61,220,132,0.12)' : 'rgba(255,92,92,0.12)'};
         color:${s.hit ? 'var(--green)' : 'var(--red)'};
         border:0.5px solid ${s.hit ? 'rgba(61,220,132,0.3)' : 'rgba(255,92,92,0.3)'};">
-        ${s.actualReps}/${s.targetReps}
+        ${s.weight}kg × ${s.actualReps}/${s.targetReps}
       </span>`
     ).join('');
+    const uniqueWeights = [...new Set(ex.sets.map(s => s.weight))];
+    const weightLabel = uniqueWeights.length === 1 ? `${uniqueWeights[0]}kg` : 'Mixed weights';
     return `<div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
         <div>
           <div style="font-size:15px;font-weight:600;">${ex.exercise}</div>
-          <div style="font-size:12px;color:var(--text3);">${ex.weight}kg &bull; ${ex.completion}% completion &bull; ${ex.totalVol}kg vol</div>
+          <div style="font-size:12px;color:var(--text3);">${weightLabel} &bull; ${ex.completion}% completion &bull; ${ex.totalVol}kg vol</div>
         </div>
         <button class="btn btn-sm btn-danger-sm" onclick="removeSessionExercise(${i})">Remove</button>
       </div>
@@ -1902,7 +1715,7 @@ function deleteLog(id) {
   save();
   deleteEntry(id);
   refreshSelects();
-  renderDashboardHistory();
+  renderHistory();
   renderDashboard();
   renderPBs();
 }
@@ -2334,17 +2147,14 @@ const EXERCISES = {
 
 // ── HISTORY ──
 function renderHistory() {
-  const filterExEl = document.getElementById('filter-ex');
-  const periodEl = document.getElementById('filter-period');
-  const el = document.getElementById('history-list');
-  if (!filterExEl || !periodEl || !el) return;
-  const filterEx = filterExEl.value;
-  const period = periodEl.value;
+  const filterEx = document.getElementById('filter-ex').value;
+  const period = document.getElementById('filter-period').value;
   const cutoff = period === 'all' ? null : daysAgo(parseInt(period));
   let filtered = logs.filter(l =>
     (!filterEx || l.exercise === filterEx) &&
     (!cutoff || l.date >= cutoff)
   );
+  const el = document.getElementById('history-list');
   if (!filtered.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>No entries found.</div>'; return; }
   el.innerHTML = filtered.map(l => {
     const pr = isPR(l);
@@ -2477,7 +2287,7 @@ function saveLogEdit(id) {
   logs[idx].notes = notes;
   save();
   pushEntry(logs[idx]); // sync update to sheets
-  renderDashboardHistory();
+  renderHistory();
   renderDashboard();
   renderPBs();
   showToast('Entry updated!');
@@ -2960,7 +2770,7 @@ function switchPage(name, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'history') { loadLeaderboard(); }
+  if (name === 'history') { refreshSelects(); renderHistory(); }
   if (name === 'progress') { refreshSelects(); renderProgress(); }
   if (name === 'pbs') renderPBs();
   if (name === 'dashboard') renderDashboard();
@@ -2991,7 +2801,6 @@ if (checkAutoLogin()) {
   renderSuggestions();
   loadFromSheets();
   loadBWFromSheets();
-  loadLeaderboard();
 }
 </script>
 </body>
