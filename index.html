@@ -308,7 +308,7 @@
       <div style="display:flex; justify-content:space-between; align-items:flex-start;">
         <div>
           <div class="metric-label" style="margin-bottom:4px;">Volume this week</div>
-          <div style="font-family:'Barlow Condensed',sans-serif; font-size:28px; font-weight:700; color:var(--text); line-height:1;" id="d-vol-week">0<span style="font-size:14px; font-weight:400; color:var(--text3);">kg</span></div>
+          <div style="font-family:'Barlow Condensed',sans-serif; font-size:28px; font-weight:700; color:var(--text); line-height:1;" id="d-vol-week">0.00<span style="font-size:14px; font-weight:400; color:var(--text3);">t</span></div>
         </div>
         <div style="text-align:right;">
           <div class="metric-label" style="margin-bottom:4px;">vs last week</div>
@@ -864,17 +864,13 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
     Log
   </button>
-  <button class="nav-btn" onclick="switchPage('leaderboard',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
-    Ranks
-  </button>
   <button class="nav-btn" onclick="switchPage('templates',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
     Templates
   </button>
-  <button class="nav-btn" onclick="switchPage('history',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    History
+  <button class="nav-btn" onclick="switchPage('leaderboard',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
+    Leaderboards
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -1189,7 +1185,7 @@ function renderLeaderboard(error) {
   el.innerHTML = leaderboardData.map((row, idx) => {
     const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
     const vol = Number(row.volume || 0);
-    const volText = vol >= 1000 ? (vol / 1000).toFixed(1) + 'k' : Math.round(vol);
+    const volText = (vol / 1000).toFixed(vol >= 10000 ? 1 : 2);
     const sessions = Number(row.sessions || 0);
     return `<div class="pb-item">
       <div>
@@ -1197,7 +1193,7 @@ function renderLeaderboard(error) {
         <div class="pb-meta">${sessions} session${sessions !== 1 ? 's' : ''} this week</div>
       </div>
       <div class="pb-right">
-        <div class="pb-weight">${volText}kg</div>
+        <div class="pb-weight">${volText}t</div>
         <div class="pb-1rm">weekly volume</div>
       </div>
     </div>`;
@@ -1402,8 +1398,8 @@ function renderDashboard() {
   // Volume this week vs last week
   const volThisWeek = logs.filter(l => l.date >= daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
   const volLastWeek = logs.filter(l => l.date >= daysAgo(14) && l.date < daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
-  const volThisK = volThisWeek >= 1000 ? (volThisWeek/1000).toFixed(1)+'k' : Math.round(volThisWeek);
-  document.getElementById('d-vol-week').innerHTML = volThisK + '<span style="font-size:14px;font-weight:400;color:var(--text3);">kg</span>';
+  const volThisTonnes = (volThisWeek / 1000).toFixed(volThisWeek >= 10000 ? 1 : 2);
+  document.getElementById('d-vol-week').innerHTML = volThisTonnes + '<span style="font-size:14px;font-weight:400;color:var(--text3);">t</span>';
   const trendEl = document.getElementById('d-vol-trend');
   if (!volLastWeek) {
     trendEl.textContent = '—'; trendEl.style.color = 'var(--text3)';
