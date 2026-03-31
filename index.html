@@ -352,12 +352,6 @@
     <div class="card">
       <div id="dash-recent"></div>
     </div>
-
-    <!-- History -->
-    <div class=\"section-title\">History</div>
-    <div class=\"card\">
-      <div id=\"dash-history\"></div>
-    </div>
   </div>
 
   <!-- ══ LOG ══ -->
@@ -629,23 +623,26 @@
     <div id="starter-templates-list" style="margin-bottom:20px;"></div>
   </div>
 
-  <!-- ══ LEADERBOARD ══ -->
+
+  <!-- ══ HISTORY ══ -->
   <div class="page" id="page-history">
     <div class="page-header">
-      <h1>Leaderboard</h1>
-      <p>Weekly total volume across the group</p>
+      <h1>History</h1>
+      <p>All your logged sessions</p>
     </div>
-    <div class="card" style="margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-        <div>
-          <div class="card-label" style="margin-bottom:4px;">This week</div>
-          <div style="font-size:13px;color:var(--text2);" id="leaderboard-subtitle">Mon–Sun total lifted volume</div>
-        </div>
-        <button class="btn btn-sm btn-ghost" onclick="loadLeaderboard(true)">Refresh</button>
-      </div>
+    <div class="filter-row">
+      <select id="filter-ex" onchange="renderHistory()">
+        <option value="">All exercises</option>
+      </select>
+      <select id="filter-period" onchange="renderHistory()">
+        <option value="all">All time</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
     </div>
     <div class="card">
-      <div id="leaderboard-list"></div>
+      <div id="history-list"></div>
     </div>
   </div>
 
@@ -847,8 +844,8 @@
     Templates
   </button>
   <button class="nav-btn" onclick="switchPage('history',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
-    Leaderboard
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    History
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -921,24 +918,6 @@ function pinDelete() {
   updateDots();
 }
 
-async function refreshStartupViews() {
-  refreshSelects();
-  refreshTemplateSelects();
-  renderDashboard();
-  renderDashboardHistory();
-  renderSuggestions();
-}
-
-async function initializeAppData() {
-  await refreshStartupViews();
-  await Promise.allSettled([
-    loadFromSheets(),
-    loadBWFromSheets(),
-    loadLeaderboard()
-  ]);
-  await refreshStartupViews();
-}
-
 function attemptLogin() {
   const name = document.getElementById('login-name').value.trim();
   const pin = pinBuffer;
@@ -953,7 +932,12 @@ function attemptLogin() {
   document.getElementById('current-user-name').textContent = name;
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
-  initializeAppData();
+  refreshSelects();
+  refreshTemplateSelects();
+  renderDashboard();
+  renderSuggestions();
+  loadFromSheets();
+  loadBWFromSheets();
 }
 
 function switchUser() {
@@ -991,7 +975,6 @@ function checkAutoLogin() {
 let logs = [];
 let pChart = null, vChart = null;
 let syncStatus = 'idle';
-let leaderboardData = [];
 
 function saveLocal() {
   if (!currentUser) return;
@@ -1074,105 +1057,13 @@ async function loadFromSheets() {
       saveLocal();
       refreshSelects();
       renderDashboard();
-      renderDashboardHistory();
+      renderHistory();
     }
-    refreshSelects();
-    renderDashboard();
-    renderDashboardHistory();
     setSyncIndicator('ok');
     setTimeout(() => setSyncIndicator('idle'), 3000);
   } catch(e) {
     setSyncIndicator('error');
   }
-}
-
-
-async function loadLeaderboard(forceRefresh = false) {
-  const el = document.getElementById('leaderboard-list');
-  if (!el) return;
-  if (!currentUser) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div>Log in to view the leaderboard.</div>';
-    return;
-  }
-  if (!forceRefresh && leaderboardData.length) {
-    renderLeaderboard();
-    return;
-  }
-  el.innerHTML = '<div style="font-size:13px;color:var(--text3);">Loading leaderboard...</div>';
-  try {
-    const data = await sheetRequest({ action: 'getLeaderboard' });
-    leaderboardData = Array.isArray(data) ? data : [];
-    renderLeaderboard();
-  } catch (e) {
-    leaderboardData = [];
-    renderLeaderboard(e);
-  }
-}
-
-function startOfWeekDate() {
-  const d = new Date();
-  const day = d.getDay();
-  d.setHours(0,0,0,0);
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d;
-}
-
-function renderLeaderboard(error) {
-  const el = document.getElementById('leaderboard-list');
-  const sub = document.getElementById('leaderboard-subtitle');
-  if (!el) return;
-  const monday = startOfWeekDate();
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const fmt = d => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  if (sub) sub.textContent = `${fmt(monday)} – ${fmt(sunday)} total lifted volume`;
-  if (error) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div>The leaderboard needs the new Apps Script action <strong>getLeaderboard</strong> before it can load.</div>';
-    return;
-  }
-  if (!leaderboardData.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div>No leaderboard data yet this week.</div>';
-    return;
-  }
-  el.innerHTML = leaderboardData.map((row, idx) => {
-    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
-    const vol = Number(row.volume || 0);
-    const volText = vol >= 1000 ? (vol / 1000).toFixed(1) + 'k' : Math.round(vol);
-    const sessions = Number(row.sessions || 0);
-    return `<div class="pb-item">
-      <div>
-        <div class="pb-name">${medal} ${row.name || row.user || 'Unknown'}</div>
-        <div class="pb-meta">${sessions} session${sessions !== 1 ? 's' : ''} this week</div>
-      </div>
-      <div class="pb-right">
-        <div class="pb-weight">${volText}kg</div>
-        <div class="pb-1rm">weekly volume</div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function renderDashboardHistory() {
-  const el = document.getElementById('dash-history');
-  if (!el) return;
-  const filtered = [...logs].sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id).slice(0, 12);
-  if (!filtered.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>Your full workout history will show here.</div>';
-    return;
-  }
-  el.innerHTML = filtered.map(l => {
-    const isCardio = l.cardio || CARDIO_EXERCISES[l.exercise];
-    const detail = isCardio ? (l.summary || l.notes || l.reps + ' mins') : `${l.weight}kg × ${l.reps} reps`;
-    return `<div class="log-item">
-      <div class="log-top">
-        <div>
-          <div class="log-exercise">${l.exercise}</div>
-          <div class="log-date">${l.date}${l.setNum ? ' · Set ' + l.setNum : ''}</div>
-        </div>
-      </div>
-      <div class="log-detail">${detail}</div>
-    </div>`;
-  }).join('');
 }
 
 function save() { saveLocal(); }
@@ -1257,7 +1148,6 @@ function refreshSelects() {
   const exs = allExercises();
   ['filter-ex','prog-ex'].forEach(id => {
     const sel = document.getElementById(id);
-    if (!sel) return;
     const cur = sel.value;
     const placeholder = id === 'filter-ex' ? '<option value="">All exercises</option>' : '<option value="">Select an exercise...</option>';
     sel.innerHTML = placeholder + exs.map(e => `<option value="${e}"${e===cur?' selected':''}>${e}</option>`).join('');
@@ -1400,12 +1290,14 @@ function renderDashboard() {
   // Week grid
   renderWeekGrid();
 
-  renderDashboardHistory();
-
   // Recent activity
   const recent = sorted.slice(0, 5);
   const rec = document.getElementById('dash-recent');
-  if (!recent.length) { rec.innerHTML = '<div class="empty"><div class="empty-icon">💪</div>Log your first session to see activity here.</div>'; return; }
+  if (!recent.length) {
+    rec.innerHTML = '<div class="empty"><div class="empty-icon">💪</div>Log your first session to see activity here.</div>';
+    renderDashboardHistory();
+    return;
+  }
   rec.innerHTML = recent.map(l => {
     const pr = isPR(l);
     const isCardio = l.cardio || CARDIO_EXERCISES[l.exercise];
@@ -1421,6 +1313,7 @@ function renderDashboard() {
       </div>
     </div>`;
   }).join('');
+  renderDashboardHistory();
 }
 
 function calcBestStreak() {
@@ -1463,17 +1356,61 @@ function renderSuggestions() {
     </button>`).join('');
 }
 
+function inferExerciseGroup(name, lastLog = null) {
+  if (!name) return 'custom';
+  if (lastLog && lastLog.muscleGroup && lastLog.muscleGroup !== 'other') return lastLog.muscleGroup;
+
+  for (const [group, list] of Object.entries(EXERCISES)) {
+    if ((list || []).includes(name)) return group;
+  }
+
+  const prevMatch = logs.find(l => l.exercise === name && l.muscleGroup && l.muscleGroup !== 'other');
+  if (prevMatch) return prevMatch.muscleGroup;
+
+  const lower = name.toLowerCase();
+  const keywordMap = {
+    chest:['bench press','incline','decline','chest fly','pec deck','push up','cable crossover','dips (chest)'],
+    back:['deadlift','pull up','chin up','lat pulldown','row','face pull','pulldown','shrug','good morning','rack pull'],
+    shoulders:['press','lateral raise','front raise','rear delt','upright row','arnold'],
+    biceps:['curl','preacher','hammer','zottman'],
+    triceps:['pushdown','skull crusher','close grip','tricep','kickback','diamond'],
+    legs:['squat','leg press','hack squat','lunge','leg extension','leg curl','calf','step up','box jump','romanian','stiff leg'],
+    glutes:['hip thrust','glute bridge','kickback','sumo','abductor','adductor'],
+    core:['plank','crunch','leg raise','ab wheel','russian twist','pallof','dead bug','v-up','sit up'],
+    cardio:['treadmill','rowing','cycling','stair','elliptical','hiit','jump rope','battle rope','cross trainer','jumping jacks']
+  };
+  for (const [group, keywords] of Object.entries(keywordMap)) {
+    if (keywords.some(k => lower.includes(k))) return group;
+  }
+  return 'custom';
+}
+
 function quickFillExercise(name) {
-  // find last log of this exercise and prefill weight/reps
   const last = logs.find(l => l.exercise === name);
   if (last) {
     document.getElementById('inp-weight').value = last.weight;
-    document.getElementById('inp-target-reps').value = last.reps;
+    document.getElementById('inp-target-reps').value = last.targetReps || last.reps;
   }
-  document.getElementById('inp-group').value = 'custom';
+
+  const group = inferExerciseGroup(name, last);
+  document.getElementById('inp-group').value = group;
   populateExerciseDropdown();
-  document.getElementById('inp-exercise').value = name;
-  document.getElementById('inp-exercise').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  if (group === 'custom') {
+    document.getElementById('inp-exercise').value = name;
+    document.getElementById('inp-exercise').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    const select = document.getElementById('inp-exercise-select');
+    if (select) {
+      select.value = name;
+      if (group === 'cardio') {
+        switchToCardioForm(name);
+      } else {
+        showExercisePB(name);
+      }
+      select.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
 }
 
 // ── SESSION STATE ──
@@ -1571,19 +1508,14 @@ function buildSetRows() {
 
   let html = '';
   for (let i = 1; i <= setsCount; i++) {
-    html += `<div style="display:grid;grid-template-columns:56px 1fr 1fr auto;gap:10px;align-items:end;padding:10px 0;border-bottom:0.5px solid var(--border);">
-      <div style="font-size:13px;font-weight:600;color:var(--text3);">Set ${i}</div>
-      <div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Weight (kg)</div>
-        <input type="number" class="set-weight-input" id="set-weight-${i}" value="${weight}" min="0" step="0.5" inputmode="decimal"
-          style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
-      </div>
-      <div>
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);">
+      <div style="font-size:13px;font-weight:600;color:var(--text3);min-width:44px;">Set ${i}</div>
+      <div style="flex:1;">
         <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Actual reps</div>
         <input type="number" class="set-reps-input" id="set-reps-${i}" value="${targetReps}" min="0" inputmode="numeric"
           style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
       </div>
-      <div style="font-size:12px;color:var(--text3);text-align:center;min-width:48px;">
+      <div style="font-size:12px;color:var(--text3);text-align:center;">
         <div>Target</div>
         <div style="font-size:16px;font-weight:600;color:var(--text2);">${targetReps}</div>
       </div>
@@ -1603,33 +1535,24 @@ function clearRPE() {
 
 function saveExercise() {
   const exercise = getExerciseName();
-  const defaultWeight = parseFloat(document.getElementById('inp-weight').value);
+  const weight = parseFloat(document.getElementById('inp-weight').value);
   const targetReps = parseInt(document.getElementById('inp-target-reps').value);
   const notes = document.getElementById('inp-notes').value.trim();
   const rpe = rpeSkipped ? null : parseInt(document.getElementById('inp-rpe').value);
   const date = document.getElementById('inp-date').value;
 
-  if (!exercise || isNaN(defaultWeight) || isNaN(targetReps)) { showToast('Missing exercise details.', 'error'); return; }
+  if (!exercise || isNaN(weight) || isNaN(targetReps)) { showToast('Missing exercise details.', 'error'); return; }
 
   const setInputs = document.querySelectorAll('.set-reps-input');
-  const weightInputs = document.querySelectorAll('.set-weight-input');
-  if (!setInputs.length || !weightInputs.length) { showToast('Build your sets first.', 'error'); return; }
+  if (!setInputs.length) { showToast('Build your sets first.', 'error'); return; }
 
   const sets = [];
-  for (let i = 0; i < setInputs.length; i++) {
-    const actual = parseInt(setInputs[i].value) || 0;
-    const setWeight = parseFloat(weightInputs[i].value);
-    if (isNaN(setWeight)) { showToast(`Enter a weight for set ${i + 1}.`, 'error'); return; }
-    sets.push({
-      setNum: i + 1,
-      weight: setWeight,
-      targetReps,
-      actualReps: actual,
-      hit: actual >= targetReps
-    });
-  }
+  setInputs.forEach((inp, i) => {
+    const actual = parseInt(inp.value) || 0;
+    sets.push({ setNum: i + 1, targetReps, actualReps: actual, hit: actual >= targetReps });
+  });
 
-  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * st.weight, 0));
+  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * weight, 0));
   const allHit = sets.every(s => s.hit);
   const completion = Math.round((sets.reduce((s,st) => s + Math.min(st.actualReps, st.targetReps), 0) / sets.reduce((s,st) => s + st.targetReps, 0)) * 100);
 
@@ -1638,15 +1561,13 @@ function saveExercise() {
   const customMuscle = group === 'custom'
     ? document.getElementById('inp-custom-muscle').value
     : group;
-  if (group === 'custom') rememberCustomExercise(exercise, customMuscle);
   const baseId = Date.now();
-  let prShown = false;
   sets.forEach((st, i) => {
     const entry = {
       id: baseId + (i * 100),
       date,
       exercise,
-      weight: st.weight,
+      weight,
       reps: st.actualReps,
       targetReps: st.targetReps,
       sets: 1,
@@ -1659,14 +1580,11 @@ function saveExercise() {
     logs.unshift(entry);
     save();
     pushEntry(entry);
-    if (pr && !prShown) {
-      showToast(`🏆 New PR on ${exercise}! ${st.weight}kg`, 'pr');
-      prShown = true;
-    }
+    if (pr && i === 0) showToast(`🏆 New PR on ${exercise}! ${weight}kg`, 'pr');
   });
 
   // Add to session display
-  sessionExercises.push({ exercise, weight: sets[0].weight, sets, targetReps, notes, rpe, totalVol, completion, allHit });
+  sessionExercises.push({ exercise, weight, sets, targetReps, notes, rpe, totalVol, completion, allHit });
   renderSessionLog();
 
   // Reset form
@@ -1688,7 +1606,7 @@ function saveExercise() {
 
   refreshSelects();
   renderDashboard();
-  if (!prShown) showToast(allHit ? `✓ ${exercise} — all sets hit!` : `Saved ${exercise} — ${completion}% completion`);
+  if (!showToast.shown) showToast(allHit ? `✓ ${exercise} — all sets hit!` : `Saved ${exercise} — ${completion}% completion`);
 }
 
 function renderSessionLog() {
@@ -1707,23 +1625,19 @@ function renderSessionLog() {
         ${ex.notes ? `<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:4px;">${ex.notes}</div>` : ''}
       </div>`;
     }
-    const sameWeight = ex.sets.every(s => s.weight === ex.sets[0].weight);
-    const headerText = sameWeight
-      ? `${ex.sets[0].weight}kg &bull; ${ex.completion}% completion &bull; ${ex.totalVol}kg vol`
-      : `${ex.completion}% completion &bull; ${ex.totalVol}kg vol`;
     const setsHtml = ex.sets.map(s =>
       `<span style="display:inline-flex;align-items:center;gap:3px;font-size:12px;padding:3px 8px;border-radius:20px;margin:2px;
         background:${s.hit ? 'rgba(61,220,132,0.12)' : 'rgba(255,92,92,0.12)'};
         color:${s.hit ? 'var(--green)' : 'var(--red)'};
         border:0.5px solid ${s.hit ? 'rgba(61,220,132,0.3)' : 'rgba(255,92,92,0.3)'};">
-        ${s.weight}kg × ${s.actualReps}/${s.targetReps}
+        ${s.actualReps}/${s.targetReps}
       </span>`
     ).join('');
     return `<div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
         <div>
           <div style="font-size:15px;font-weight:600;">${ex.exercise}</div>
-          <div style="font-size:12px;color:var(--text3);">${headerText}</div>
+          <div style="font-size:12px;color:var(--text3);">${ex.weight}kg &bull; ${ex.completion}% completion &bull; ${ex.totalVol}kg vol</div>
         </div>
         <button class="btn btn-sm btn-danger-sm" onclick="removeSessionExercise(${i})">Remove</button>
       </div>
@@ -1831,7 +1745,7 @@ function deleteLog(id) {
   save();
   deleteEntry(id);
   refreshSelects();
-  renderDashboardHistory();
+  renderHistory();
   renderDashboard();
   renderPBs();
 }
@@ -2263,17 +2177,14 @@ const EXERCISES = {
 
 // ── HISTORY ──
 function renderHistory() {
-  const filterExEl = document.getElementById('filter-ex');
-  const periodEl = document.getElementById('filter-period');
-  const el = document.getElementById('history-list');
-  if (!filterExEl || !periodEl || !el) return;
-  const filterEx = filterExEl.value;
-  const period = periodEl.value;
+  const filterEx = document.getElementById('filter-ex').value;
+  const period = document.getElementById('filter-period').value;
   const cutoff = period === 'all' ? null : daysAgo(parseInt(period));
   let filtered = logs.filter(l =>
     (!filterEx || l.exercise === filterEx) &&
     (!cutoff || l.date >= cutoff)
   );
+  const el = document.getElementById('history-list');
   if (!filtered.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>No entries found.</div>'; return; }
   el.innerHTML = filtered.map(l => {
     const pr = isPR(l);
@@ -2406,7 +2317,7 @@ function saveLogEdit(id) {
   logs[idx].notes = notes;
   save();
   pushEntry(logs[idx]); // sync update to sheets
-  renderDashboardHistory();
+  renderHistory();
   renderDashboard();
   renderPBs();
   showToast('Entry updated!');
@@ -2889,7 +2800,7 @@ function switchPage(name, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'history') { loadLeaderboard(); }
+  if (name === 'history') { refreshSelects(); renderHistory(); }
   if (name === 'progress') { refreshSelects(); renderProgress(); }
   if (name === 'pbs') renderPBs();
   if (name === 'dashboard') renderDashboard();
@@ -2914,7 +2825,12 @@ function switchPage(name, btn) {
 if (checkAutoLogin()) {
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
-  initializeAppData();
+  refreshSelects();
+  refreshTemplateSelects();
+  renderDashboard();
+  renderSuggestions();
+  loadFromSheets();
+  loadBWFromSheets();
 }
 </script>
 </body>
