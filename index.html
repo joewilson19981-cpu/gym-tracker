@@ -1343,6 +1343,7 @@ function refreshSelects() {
   const exs = allExercises();
   ['filter-ex','prog-ex'].forEach(id => {
     const sel = document.getElementById(id);
+    if (!sel) return;
     const cur = sel.value;
     const placeholder = id === 'filter-ex' ? '<option value="">All exercises</option>' : '<option value="">Select an exercise...</option>';
     sel.innerHTML = placeholder + exs.map(e => `<option value="${e}"${e===cur?' selected':''}>${e}</option>`).join('');
@@ -2362,14 +2363,17 @@ const EXERCISES = {
 
 // ── HISTORY ──
 function renderHistory() {
-  const filterEx = document.getElementById('filter-ex').value;
-  const period = document.getElementById('filter-period').value;
+  const filterExEl = document.getElementById('filter-ex');
+  const periodEl = document.getElementById('filter-period');
+  const el = document.getElementById('history-list');
+  if (!filterExEl || !periodEl || !el) return;
+  const filterEx = filterExEl.value;
+  const period = periodEl.value;
   const cutoff = period === 'all' ? null : daysAgo(parseInt(period));
   let filtered = logs.filter(l =>
     (!filterEx || l.exercise === filterEx) &&
     (!cutoff || l.date >= cutoff)
   );
-  const el = document.getElementById('history-list');
   if (!filtered.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>No entries found.</div>'; return; }
   el.innerHTML = filtered.map(l => {
     const pr = isPR(l);
