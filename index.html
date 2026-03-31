@@ -352,6 +352,12 @@
     <div class="card">
       <div id="dash-recent"></div>
     </div>
+
+    <!-- History -->
+    <div class="section-title">History</div>
+    <div class="card">
+      <div id="dash-history"></div>
+    </div>
   </div>
 
   <!-- ══ LOG ══ -->
@@ -624,25 +630,21 @@
   </div>
 
 
-  <!-- ══ HISTORY ══ -->
+  <!-- ══ LEADERBOARD ══ -->
   <div class="page" id="page-history">
     <div class="page-header">
-      <h1>History</h1>
-      <p>All your logged sessions</p>
-    </div>
-    <div class="filter-row">
-      <select id="filter-ex" onchange="renderHistory()">
-        <option value="">All exercises</option>
-      </select>
-      <select id="filter-period" onchange="renderHistory()">
-        <option value="all">All time</option>
-        <option value="7">Last 7 days</option>
-        <option value="30">Last 30 days</option>
-        <option value="90">Last 90 days</option>
-      </select>
+      <h1>Leaderboard</h1>
+      <p>Total lifted this week</p>
     </div>
     <div class="card">
-      <div id="history-list"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div>
+          <div class="card-label" style="margin-bottom:4px;">This week</div>
+          <div style="font-size:13px;color:var(--text2);" id="leaderboard-subtitle">Mon–Sun total lifted volume</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="loadLeaderboard(true)">Refresh</button>
+      </div>
+      <div id="leaderboard-list"></div>
     </div>
   </div>
 
@@ -844,8 +846,8 @@
     Templates
   </button>
   <button class="nav-btn" onclick="switchPage('history',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    History
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17h10"/><path d="M9 12h8"/><path d="M11 7h6"/><path d="M4 5h2v14H4z"/></svg>
+    Leaderboard
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -938,6 +940,8 @@ function attemptLogin() {
   renderSuggestions();
   loadFromSheets();
   loadBWFromSheets();
+  loadLeaderboard();
+  loadLeaderboard();
 }
 
 function switchUser() {
@@ -1148,6 +1152,7 @@ function refreshSelects() {
   const exs = allExercises();
   ['filter-ex','prog-ex'].forEach(id => {
     const sel = document.getElementById(id);
+    if (!sel) return;
     const cur = sel.value;
     const placeholder = id === 'filter-ex' ? '<option value="">All exercises</option>' : '<option value="">Select an exercise...</option>';
     sel.innerHTML = placeholder + exs.map(e => `<option value="${e}"${e===cur?' selected':''}>${e}</option>`).join('');
@@ -1184,8 +1189,7 @@ function renderDashboard() {
   // Volume this week vs last week
   const volThisWeek = logs.filter(l => l.date >= daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
   const volLastWeek = logs.filter(l => l.date >= daysAgo(14) && l.date < daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
-  const volThisK = volThisWeek >= 1000 ? (volThisWeek/1000).toFixed(1)+'k' : Math.round(volThisWeek);
-  document.getElementById('d-vol-week').innerHTML = volThisK + '<span style="font-size:14px;font-weight:400;color:var(--text3);">kg</span>';
+  document.getElementById('d-vol-week').innerHTML = formatMassReadable(volThisWeek).replace(' tonnes','<span style="font-size:14px;font-weight:400;color:var(--text3);"> tonnes</span>').replace('kg','<span style="font-size:14px;font-weight:400;color:var(--text3);">kg</span>');
   const trendEl = document.getElementById('d-vol-trend');
   if (!volLastWeek) {
     trendEl.textContent = '—'; trendEl.style.color = 'var(--text3)';
@@ -1293,8 +1297,9 @@ function renderDashboard() {
   // Recent activity
   const recent = sorted.slice(0, 5);
   const rec = document.getElementById('dash-recent');
-  if (!recent.length) { rec.innerHTML = '<div class="empty"><div class="empty-icon">💪</div>Log your first session to see activity here.</div>'; return; }
-  rec.innerHTML = recent.map(l => {
+  if (!recent.length) {
+    rec.innerHTML = '<div class="empty"><div class="empty-icon">💪</div>Log your first session to see activity here.</div>';
+  } else rec.innerHTML = recent.map(l => {
     const pr = isPR(l);
     const isCardio = l.cardio || CARDIO_EXERCISES[l.exercise];
     const detail = isCardio ? (l.summary || l.reps + ' mins') : `${l.weight}kg × ${l.reps} reps`;
@@ -1309,6 +1314,96 @@ function renderDashboard() {
       </div>
     </div>`;
   }).join('');
+
+  renderDashboardHistory();
+}
+
+
+function renderDashboardHistory() {
+  const el = document.getElementById('dash-history');
+  if (!el) return;
+  if (!logs.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>No entries found.</div>';
+    return;
+  }
+  const filtered = [...logs].sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+  el.innerHTML = filtered.map(l => {
+    const pr = isPR(l);
+    const isCardio = l.cardio || CARDIO_EXERCISES[l.exercise];
+    if (isCardio) {
+      return `<div class="log-item" id="dash-log-item-${l.id}">
+        <div class="log-top">
+          <div>
+            <div class="log-exercise">${l.exercise}</div>
+            <div class="log-date">${l.date}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm btn-ghost" onclick="toggleEditLog(${l.id})">✏️</button>
+            <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
+          </div>
+        </div>
+        <div class="log-detail">${l.summary || l.notes || l.reps + ' mins'}</div>
+      </div>`;
+    }
+    const vol = Math.round(l.weight * l.reps);
+    const hasTarget = l.targetReps && l.targetReps !== l.reps;
+    const repsDisplay = hasTarget ? `${l.reps}/${l.targetReps} reps` : `${l.reps} reps`;
+    const hit = !hasTarget || l.reps >= l.targetReps;
+    return `<div class="log-item" id="dash-log-item-${l.id}">
+      <div class="log-top">
+        <div>
+          <div class="log-exercise">${l.exercise}</div>
+          <div class="log-date">${l.date}${l.setNum ? ` · Set ${l.setNum}` : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm btn-ghost" onclick="toggleEditLog(${l.id})">✏️</button>
+          <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
+        </div>
+      </div>
+      <div class="log-detail">${l.weight}kg × <span style="color:${hit?'var(--green)':'var(--red)'}">${repsDisplay}</span></div>
+      ${l.notes ? `<div class="log-notes">${l.notes}</div>` : ''}
+      <div class="log-badges">
+        ${pr ? '<span class="badge badge-pr">PR</span>' : ''}
+        <span class="badge badge-vol">${vol}kg vol</span>
+        <span class="badge badge-1rm">~${calc1RM(l.weight, l.reps)}kg 1RM</span>
+        ${l.rpe ? `<span class="badge" style="background:rgba(232,255,71,0.1);color:var(--accent);border:0.5px solid rgba(232,255,71,0.25);">RPE ${l.rpe}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function formatMassReadable(kg) {
+  if (!isFinite(kg) || kg <= 0) return '0kg';
+  if (kg >= 1000) {
+    const tonnes = kg / 1000;
+    return `${Number(tonnes.toFixed(tonnes >= 10 ? 1 : 2))} tonnes`;
+  }
+  return `${Math.round(kg)}kg`;
+}
+
+async function loadLeaderboard(forceRefresh = false) {
+  const listEl = document.getElementById('leaderboard-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="empty"><div class="empty-icon">🏋️</div>Loading leaderboard...</div>';
+  try {
+    const data = await sheetRequest({ action: 'getLeaderboard' });
+    if (!Array.isArray(data) || !data.length) {
+      listEl.innerHTML = '<div class="empty"><div class="empty-icon">🏋️</div>No leaderboard data yet.</div>';
+      return;
+    }
+    listEl.innerHTML = data.map((u, i) => `
+      <div class="pb-item">
+        <div>
+          <div class="pb-name">#${i+1} ${u.name || u.user}</div>
+          <div class="pb-meta">${u.sessions || 0} session${(u.sessions||0)!==1?'s':''} this week</div>
+        </div>
+        <div class="pb-right">
+          <div class="pb-weight">${formatMassReadable(Number(u.volume||0))}</div>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    listEl.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>Could not load leaderboard.</div>';
+  }
 }
 
 function calcBestStreak() {
@@ -1351,17 +1446,35 @@ function renderSuggestions() {
     </button>`).join('');
 }
 
+function findExerciseGroup(name) {
+  for (const [group, list] of Object.entries(EXERCISES)) {
+    if ((list || []).includes(name)) return group;
+  }
+  return null;
+}
+
 function quickFillExercise(name) {
-  // find last log of this exercise and prefill weight/reps
   const last = logs.find(l => l.exercise === name);
   if (last) {
     document.getElementById('inp-weight').value = last.weight;
-    document.getElementById('inp-target-reps').value = last.reps;
+    document.getElementById('inp-target-reps').value = last.targetReps || last.reps;
   }
-  document.getElementById('inp-group').value = 'custom';
-  populateExerciseDropdown();
-  document.getElementById('inp-exercise').value = name;
-  document.getElementById('inp-exercise').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const guessedGroup = (last && last.muscleGroup && last.muscleGroup !== 'other') ? last.muscleGroup : findExerciseGroup(name);
+  if (guessedGroup && guessedGroup !== 'custom') {
+    document.getElementById('inp-group').value = guessedGroup;
+    populateExerciseDropdown();
+    const sel = document.getElementById('inp-exercise-select');
+    if (sel) sel.value = name;
+    showExercisePB(name);
+    if (guessedGroup === 'cardio') switchToCardioForm(name);
+  } else {
+    document.getElementById('inp-group').value = 'custom';
+    populateExerciseDropdown();
+    document.getElementById('inp-exercise').value = name;
+    if (last && last.muscleGroup) document.getElementById('inp-custom-muscle').value = last.muscleGroup;
+  }
+  document.getElementById('set-rows-section').style.display = 'none';
+  document.getElementById('set-rows-list').innerHTML = '';
 }
 
 // ── SESSION STATE ──
@@ -1459,9 +1572,14 @@ function buildSetRows() {
 
   let html = '';
   for (let i = 1; i <= setsCount; i++) {
-    html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);">
-      <div style="font-size:13px;font-weight:600;color:var(--text3);min-width:44px;">Set ${i}</div>
-      <div style="flex:1;">
+    html += `<div style="display:grid;grid-template-columns:56px 1fr 1fr auto;align-items:end;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);">
+      <div style="font-size:13px;font-weight:600;color:var(--text3);">Set ${i}</div>
+      <div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Weight (kg)</div>
+        <input type="number" class="set-weight-input" id="set-weight-${i}" value="${weight}" min="0" step="0.5" inputmode="decimal"
+          style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
+      </div>
+      <div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Actual reps</div>
         <input type="number" class="set-reps-input" id="set-reps-${i}" value="${targetReps}" min="0" inputmode="numeric"
           style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;padding:8px 12px;outline:none;text-align:center;">
@@ -1486,39 +1604,39 @@ function clearRPE() {
 
 function saveExercise() {
   const exercise = getExerciseName();
-  const weight = parseFloat(document.getElementById('inp-weight').value);
+  const defaultWeight = parseFloat(document.getElementById('inp-weight').value);
   const targetReps = parseInt(document.getElementById('inp-target-reps').value);
   const notes = document.getElementById('inp-notes').value.trim();
   const rpe = rpeSkipped ? null : parseInt(document.getElementById('inp-rpe').value);
   const date = document.getElementById('inp-date').value;
 
-  if (!exercise || isNaN(weight) || isNaN(targetReps)) { showToast('Missing exercise details.', 'error'); return; }
+  if (!exercise || isNaN(defaultWeight) || isNaN(targetReps)) { showToast('Missing exercise details.', 'error'); return; }
 
-  const setInputs = document.querySelectorAll('.set-reps-input');
-  if (!setInputs.length) { showToast('Build your sets first.', 'error'); return; }
+  const repInputs = document.querySelectorAll('.set-reps-input');
+  const weightInputs = document.querySelectorAll('.set-weight-input');
+  if (!repInputs.length || !weightInputs.length) { showToast('Build your sets first.', 'error'); return; }
 
   const sets = [];
-  setInputs.forEach((inp, i) => {
+  repInputs.forEach((inp, i) => {
     const actual = parseInt(inp.value) || 0;
-    sets.push({ setNum: i + 1, targetReps, actualReps: actual, hit: actual >= targetReps });
+    const setWeight = parseFloat(weightInputs[i]?.value);
+    const weight = isNaN(setWeight) ? defaultWeight : setWeight;
+    sets.push({ setNum: i + 1, targetReps, actualReps: actual, weight, hit: actual >= targetReps });
   });
 
-  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * weight, 0));
+  const totalVol = Math.round(sets.reduce((s, st) => s + st.actualReps * st.weight, 0));
   const allHit = sets.every(s => s.hit);
   const completion = Math.round((sets.reduce((s,st) => s + Math.min(st.actualReps, st.targetReps), 0) / sets.reduce((s,st) => s + st.targetReps, 0)) * 100);
 
-  // Save each set as individual log entry
   const group = document.getElementById('inp-group').value;
-  const customMuscle = group === 'custom'
-    ? document.getElementById('inp-custom-muscle').value
-    : group;
+  const customMuscle = group === 'custom' ? document.getElementById('inp-custom-muscle').value : group;
   const baseId = Date.now();
   sets.forEach((st, i) => {
     const entry = {
       id: baseId + (i * 100),
       date,
       exercise,
-      weight,
+      weight: st.weight,
       reps: st.actualReps,
       targetReps: st.targetReps,
       sets: 1,
@@ -1531,14 +1649,12 @@ function saveExercise() {
     logs.unshift(entry);
     save();
     pushEntry(entry);
-    if (pr && i === 0) showToast(`🏆 New PR on ${exercise}! ${weight}kg`, 'pr');
+    if (pr && i === 0) showToast(`🏆 New PR on ${exercise}! ${st.weight}kg`, 'pr');
   });
 
-  // Add to session display
-  sessionExercises.push({ exercise, weight, sets, targetReps, notes, rpe, totalVol, completion, allHit });
+  sessionExercises.push({ exercise, weight: defaultWeight, sets, targetReps, notes, rpe, totalVol, completion, allHit });
   renderSessionLog();
 
-  // Reset form
   document.getElementById('inp-group').value = '';
   document.getElementById('inp-exercise-select').value = '';
   document.getElementById('inp-exercise').value = '';
@@ -1581,14 +1697,14 @@ function renderSessionLog() {
         background:${s.hit ? 'rgba(61,220,132,0.12)' : 'rgba(255,92,92,0.12)'};
         color:${s.hit ? 'var(--green)' : 'var(--red)'};
         border:0.5px solid ${s.hit ? 'rgba(61,220,132,0.3)' : 'rgba(255,92,92,0.3)'};">
-        ${s.actualReps}/${s.targetReps}
+        ${s.weight}kg × ${s.actualReps}/${s.targetReps}
       </span>`
     ).join('');
     return `<div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
         <div>
           <div style="font-size:15px;font-weight:600;">${ex.exercise}</div>
-          <div style="font-size:12px;color:var(--text3);">${ex.weight}kg &bull; ${ex.completion}% completion &bull; ${ex.totalVol}kg vol</div>
+          <div style="font-size:12px;color:var(--text3);">${(new Set(ex.sets.map(s=>s.weight))).size===1 ? ex.weight + 'kg' : 'Mixed weights'} &bull; ${ex.completion}% completion &bull; ${ex.totalVol}kg vol</div>
         </div>
         <button class="btn btn-sm btn-danger-sm" onclick="removeSessionExercise(${i})">Remove</button>
       </div>
@@ -2128,14 +2244,18 @@ const EXERCISES = {
 
 // ── HISTORY ──
 function renderHistory() {
-  const filterEx = document.getElementById('filter-ex').value;
-  const period = document.getElementById('filter-period').value;
+  const filterExEl = document.getElementById('filter-ex');
+  const filterPeriodEl = document.getElementById('filter-period');
+  const historyListEl = document.getElementById('history-list');
+  if (!filterExEl || !filterPeriodEl || !historyListEl) return;
+  const filterEx = filterExEl.value;
+  const period = filterPeriodEl.value;
   const cutoff = period === 'all' ? null : daysAgo(parseInt(period));
   let filtered = logs.filter(l =>
     (!filterEx || l.exercise === filterEx) &&
     (!cutoff || l.date >= cutoff)
   );
-  const el = document.getElementById('history-list');
+  const el = historyListEl;
   if (!filtered.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>No entries found.</div>'; return; }
   el.innerHTML = filtered.map(l => {
     const pr = isPR(l);
@@ -2751,7 +2871,7 @@ function switchPage(name, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'history') { refreshSelects(); renderHistory(); }
+  if (name === 'history') { loadLeaderboard(true); }
   if (name === 'progress') { refreshSelects(); renderProgress(); }
   if (name === 'pbs') renderPBs();
   if (name === 'dashboard') renderDashboard();
@@ -2782,6 +2902,7 @@ if (checkAutoLogin()) {
   renderSuggestions();
   loadFromSheets();
   loadBWFromSheets();
+  loadLeaderboard();
 }
 </script>
 </body>
