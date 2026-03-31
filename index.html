@@ -930,6 +930,7 @@ function attemptLogin() {
   logs = JSON.parse(localStorage.getItem('gymLogs_' + key) || '[]');
   loadBWLocal();
   loadGoals();
+  loadCustomExercises();
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('current-user-name').textContent = name;
   document.getElementById('inp-date').value = todayStr();
@@ -967,6 +968,7 @@ function checkAutoLogin() {
       loadBWLocal();
       loadTemplatesLocal();
       loadGoals();
+      loadCustomExercises();
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('current-user-name').textContent = u.name;
       return true;
@@ -1391,19 +1393,16 @@ async function loadLeaderboard(forceRefresh = false) {
       listEl.innerHTML = '<div class="empty"><div class="empty-icon">🏋️</div>No leaderboard data yet.</div>';
       return;
     }
-    listEl.innerHTML = data.map((u, i) => {
-      const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-      return `
+    listEl.innerHTML = data.map((u, i) => `
       <div class="pb-item">
         <div>
-          <div class="pb-name">${rank} ${u.name || u.user}</div>
+          <div class="pb-name">#${i+1} ${u.name || u.user}</div>
           <div class="pb-meta">${u.sessions || 0} session${(u.sessions||0)!==1?'s':''} this week</div>
         </div>
         <div class="pb-right">
           <div class="pb-weight">${formatMassReadable(Number(u.volume||0))}</div>
         </div>
-      </div>`;
-    }).join('');
+      </div>`).join('');
   } catch (e) {
     listEl.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>Could not load leaderboard.</div>';
   }
@@ -1451,7 +1450,10 @@ function renderSuggestions() {
 
 function findExerciseGroup(name) {
   for (const [group, list] of Object.entries(EXERCISES)) {
-    if ((list || []).includes(name)) return group;
+    if ((list || []).some(ex => ex.toLowerCase() === String(name).toLowerCase())) return group;
+  }
+  for (const [group, list] of Object.entries(customExercises || {})) {
+    if ((list || []).some(ex => ex.toLowerCase() === String(name).toLowerCase())) return group;
   }
   return null;
 }
@@ -1522,7 +1524,7 @@ function populateExerciseDropdown() {
   }
   customGroup.style.display = 'none';
   document.getElementById('exercise-custom-muscle-group').style.display = 'none'; dropGroup.style.display = 'block';
-  const list = EXERCISES[group] || [];
+  const list = getExercisesForGroup(group);
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
   // Switch form type based on group
   if (group === 'cardio') {
@@ -1633,6 +1635,7 @@ function saveExercise() {
 
   const group = document.getElementById('inp-group').value;
   const customMuscle = group === 'custom' ? document.getElementById('inp-custom-muscle').value : group;
+  if (group === 'custom' && customMuscle && customMuscle !== 'other') rememberCustomExercise(exercise, customMuscle);
   const baseId = Date.now();
   sets.forEach((st, i) => {
     const entry = {
@@ -1891,7 +1894,7 @@ function populateTmplExerciseDropdown() {
   if (!group) { dd.style.display='none'; cu.style.display='none'; return; }
   if (group === 'custom') { dd.style.display='none'; cu.style.display='block'; return; }
   cu.style.display='none'; dd.style.display='block';
-  const list = EXERCISES[group] || [];
+  const list = getExercisesForGroup(group);
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
 }
 
@@ -2244,6 +2247,45 @@ const EXERCISES = {
   cardio: ['Treadmill Run','Treadmill Walk','Cycling (Stationary)','Rowing Machine','Stair Climber','Elliptical','HIIT Sprints','Jump Rope','Battle Ropes','Cross Trainer'],
   full: ['Clean and Press','Thruster','Kettlebell Swing','Turkish Get Up','Burpee','Power Clean','Snatch','Farmer Carry','Sled Push','Sled Pull','Battle Rope Waves'],
 };
+
+
+let customExercises = {};
+
+function loadCustomExercises() {
+  if (!currentUser) return;
+  try {
+    customExercises = JSON.parse(localStorage.getItem('gymCustomExercises_' + currentUser.key) || '{}') || {};
+  } catch (e) {
+    customExercises = {};
+  }
+}
+
+function saveCustomExercises() {
+  if (!currentUser) return;
+  localStorage.setItem('gymCustomExercises_' + currentUser.key, JSON.stringify(customExercises));
+}
+
+function rememberCustomExercise(name, group) {
+  const exercise = String(name || '').trim();
+  const muscleGroup = String(group || '').trim();
+  if (!exercise || !muscleGroup || muscleGroup === 'other' || muscleGroup === 'custom') return;
+  if (!customExercises[muscleGroup]) customExercises[muscleGroup] = [];
+  const exists = customExercises[muscleGroup].some(e => e.toLowerCase() === exercise.toLowerCase());
+  if (!exists) {
+    customExercises[muscleGroup].push(exercise);
+    customExercises[muscleGroup].sort((a, b) => a.localeCompare(b));
+    saveCustomExercises();
+  }
+}
+
+function getExercisesForGroup(group) {
+  const base = EXERCISES[group] ? [...EXERCISES[group]] : [];
+  const extra = customExercises[group] || [];
+  extra.forEach(ex => {
+    if (!base.some(item => item.toLowerCase() === ex.toLowerCase())) base.push(ex);
+  });
+  return base.sort((a, b) => a.localeCompare(b));
+}
 
 // ── HISTORY ──
 function renderHistory() {
