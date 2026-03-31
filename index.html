@@ -354,9 +354,9 @@
     </div>
 
     <!-- History -->
-    <div class=\"section-title\">History</div>
-    <div class=\"card\">
-      <div id=\"dash-history\"></div>
+    <div class="section-title">History</div>
+    <div class="card">
+      <div id="dash-history"></div>
     </div>
   </div>
 
@@ -629,22 +629,21 @@
     <div id="starter-templates-list" style="margin-bottom:20px;"></div>
   </div>
 
+
   <!-- ══ LEADERBOARD ══ -->
   <div class="page" id="page-history">
     <div class="page-header">
       <h1>Leaderboard</h1>
-      <p>Weekly total volume across the group</p>
+      <p>Total lifted this week</p>
     </div>
-    <div class="card" style="margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div>
           <div class="card-label" style="margin-bottom:4px;">This week</div>
           <div style="font-size:13px;color:var(--text2);" id="leaderboard-subtitle">Mon–Sun total lifted volume</div>
         </div>
         <button class="btn btn-sm btn-ghost" onclick="loadLeaderboard(true)">Refresh</button>
       </div>
-    </div>
-    <div class="card">
       <div id="leaderboard-list"></div>
     </div>
   </div>
@@ -847,7 +846,7 @@
     Templates
   </button>
   <button class="nav-btn" onclick="switchPage('history',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17h10"/><path d="M9 12h8"/><path d="M11 7h6"/><path d="M4 5h2v14H4z"/></svg>
     Leaderboard
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
@@ -921,24 +920,6 @@ function pinDelete() {
   updateDots();
 }
 
-async function refreshStartupViews() {
-  refreshSelects();
-  refreshTemplateSelects();
-  renderDashboard();
-  renderDashboardHistory();
-  renderSuggestions();
-}
-
-async function initializeAppData() {
-  await refreshStartupViews();
-  await Promise.allSettled([
-    loadFromSheets(),
-    loadBWFromSheets(),
-    loadLeaderboard()
-  ]);
-  await refreshStartupViews();
-}
-
 function attemptLogin() {
   const name = document.getElementById('login-name').value.trim();
   const pin = pinBuffer;
@@ -953,7 +934,17 @@ function attemptLogin() {
   document.getElementById('current-user-name').textContent = name;
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
-  initializeAppData();
+  loadCustomExercises();
+  refreshSelects();
+  refreshTemplateSelects();
+  renderDashboard();
+  renderDashboardHistory();
+  renderSuggestions();
+  Promise.allSettled([loadFromSheets(), loadBWFromSheets()]).then(() => {
+    renderDashboard();
+    renderDashboardHistory();
+    renderSuggestions();
+  });
 }
 
 function switchUser() {
@@ -978,6 +969,7 @@ function checkAutoLogin() {
       logs = JSON.parse(localStorage.getItem('gymLogs_' + u.key) || '[]');
       loadBWLocal();
       loadTemplatesLocal();
+      loadCustomExercises();
       loadGoals();
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('current-user-name').textContent = u.name;
@@ -989,9 +981,9 @@ function checkAutoLogin() {
 
 // ── DATA ──
 let logs = [];
+let leaderboardData = [];
 let pChart = null, vChart = null;
 let syncStatus = 'idle';
-let leaderboardData = [];
 
 function saveLocal() {
   if (!currentUser) return;
@@ -1075,10 +1067,9 @@ async function loadFromSheets() {
       refreshSelects();
       renderDashboard();
       renderDashboardHistory();
+      renderHistory();
+      leaderboardData = [];
     }
-    refreshSelects();
-    renderDashboard();
-    renderDashboardHistory();
     setSyncIndicator('ok');
     setTimeout(() => setSyncIndicator('idle'), 3000);
   } catch(e) {
@@ -1137,7 +1128,9 @@ function renderLeaderboard(error) {
   el.innerHTML = leaderboardData.map((row, idx) => {
     const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
     const vol = Number(row.volume || 0);
-    const volText = vol >= 1000 ? (vol / 1000).toFixed(1) + 'k' : Math.round(vol);
+    const volText = vol >= 1000
+      ? (vol / 1000).toFixed(vol >= 10000 ? 1 : 2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1') + ' tonnes'
+      : Math.round(vol) + 'kg';
     const sessions = Number(row.sessions || 0);
     return `<div class="pb-item">
       <div>
@@ -1145,7 +1138,7 @@ function renderLeaderboard(error) {
         <div class="pb-meta">${sessions} session${sessions !== 1 ? 's' : ''} this week</div>
       </div>
       <div class="pb-right">
-        <div class="pb-weight">${volText}kg</div>
+        <div class="pb-weight">${volText}</div>
         <div class="pb-1rm">weekly volume</div>
       </div>
     </div>`;
@@ -1155,22 +1148,118 @@ function renderLeaderboard(error) {
 function renderDashboardHistory() {
   const el = document.getElementById('dash-history');
   if (!el) return;
-  const filtered = [...logs].sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id).slice(0, 12);
+  const filtered = [...logs].sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
   if (!filtered.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>Your full workout history will show here.</div>';
     return;
   }
   el.innerHTML = filtered.map(l => {
-    const isCardio = l.cardio || CARDIO_EXERCISES[l.exercise];
-    const detail = isCardio ? (l.summary || l.notes || l.reps + ' mins') : `${l.weight}kg × ${l.reps} reps`;
-    return `<div class="log-item">
+    const pr = isPR(l);
+    const isCardio = l.cardio || l.exercise === 'Treadmill Run' || CARDIO_EXERCISES[l.exercise];
+    const muscleLabel = l.muscleGroup && l.muscleGroup !== 'other'
+      ? `<span class="badge" style="background:var(--bg4);color:var(--text3);border:0.5px solid var(--border2);text-transform:capitalize;">${l.muscleGroup}</span>` : '';
+    if (isCardio) {
+      return `<div class="log-item" id="log-item-${l.id}">
+        <div class="log-top">
+          <div>
+            <div class="log-exercise">${l.exercise}</div>
+            <div class="log-date">${l.date}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm btn-ghost" onclick="toggleEditLog(${l.id})">Edit</button>
+            <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
+          </div>
+        </div>
+        <div class="log-detail">${l.summary || l.notes || l.reps + ' mins'}</div>
+        <div class="log-badges">${muscleLabel}</div>
+        <div id="log-edit-${l.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:0.5px solid var(--border);">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:8px;">Edit entry</div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label>Muscle group</label>
+            <select id="edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;">
+              <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
+              <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
+              <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
+              <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
+              <option value="biceps" ${l.muscleGroup==='biceps'?'selected':''}>Biceps</option>
+              <option value="triceps" ${l.muscleGroup==='triceps'?'selected':''}>Triceps</option>
+              <option value="legs" ${l.muscleGroup==='legs'?'selected':''}>Legs</option>
+              <option value="glutes" ${l.muscleGroup==='glutes'?'selected':''}>Glutes</option>
+              <option value="core" ${l.muscleGroup==='core'?'selected':''}>Core</option>
+              <option value="cardio" ${l.muscleGroup==='cardio'?'selected':''}>Cardio</option>
+              <option value="full" ${l.muscleGroup==='full'?'selected':''}>Full Body</option>
+            </select>
+          </div>
+          <button class="btn btn-accent btn-sm" style="width:100%;" onclick="saveLogEdit(${l.id})">Save changes</button>
+        </div>
+      </div>`;
+    }
+    const vol = Math.round(l.weight * l.reps);
+    const hasTarget = l.targetReps && l.targetReps !== l.reps;
+    const repsDisplay = hasTarget ? `${l.reps}/${l.targetReps} reps` : `${l.reps} reps`;
+    const hit = !hasTarget || l.reps >= l.targetReps;
+    return `<div class="log-item" id="log-item-${l.id}">
       <div class="log-top">
         <div>
           <div class="log-exercise">${l.exercise}</div>
-          <div class="log-date">${l.date}${l.setNum ? ' · Set ' + l.setNum : ''}</div>
+          <div class="log-date">${l.date}${l.setNum ? ` · Set ${l.setNum}` : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm btn-ghost" onclick="toggleEditLog(${l.id})">Edit</button>
+          <button class="btn btn-sm btn-danger-sm" onclick="deleteLog(${l.id})">Delete</button>
         </div>
       </div>
-      <div class="log-detail">${detail}</div>
+      <div class="log-detail">${l.weight}kg × <span style="color:${hit?'var(--green)':'var(--red)'}">${repsDisplay}</span></div>
+      ${l.notes ? `<div class="log-notes">${l.notes}</div>` : ''}
+      <div class="log-badges">
+        ${pr ? '<span class="badge badge-pr">PR</span>' : ''}
+        <span class="badge badge-vol">${vol}kg vol</span>
+        <span class="badge badge-1rm">~${calc1RM(l.weight, l.reps)}kg 1RM</span>
+        ${l.rpe ? `<span class="badge" style="background:rgba(232,255,71,0.1);color:var(--accent);border:0.5px solid rgba(232,255,71,0.25);">RPE ${l.rpe}</span>` : ''}
+        ${muscleLabel}
+      </div>
+      <div id="log-edit-${l.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:0.5px solid var(--border);">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:8px;">Edit entry</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Weight (kg)</div>
+            <input type="number" id="edit-weight-${l.id}" value="${l.weight}" min="0" step="0.5" inputmode="decimal"
+              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Actual reps</div>
+            <input type="number" id="edit-reps-${l.id}" value="${l.reps}" min="0" inputmode="numeric"
+              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">Target reps</div>
+            <input type="number" id="edit-target-${l.id}" value="${l.targetReps || l.reps}" min="0" inputmode="numeric"
+              style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;padding:8px;outline:none;text-align:center;">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Muscle group</label>
+          <select id="edit-muscle-${l.id}" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;">
+            <option value="other" ${(!l.muscleGroup||l.muscleGroup==='other')?'selected':''}>Other</option>
+            <option value="chest" ${l.muscleGroup==='chest'?'selected':''}>Chest</option>
+            <option value="back" ${l.muscleGroup==='back'?'selected':''}>Back</option>
+            <option value="shoulders" ${l.muscleGroup==='shoulders'?'selected':''}>Shoulders</option>
+            <option value="biceps" ${l.muscleGroup==='biceps'?'selected':''}>Biceps</option>
+            <option value="triceps" ${l.muscleGroup==='triceps'?'selected':''}>Triceps</option>
+            <option value="legs" ${l.muscleGroup==='legs'?'selected':''}>Legs</option>
+            <option value="glutes" ${l.muscleGroup==='glutes'?'selected':''}>Glutes</option>
+            <option value="core" ${l.muscleGroup==='core'?'selected':''}>Core</option>
+            <option value="cardio" ${l.muscleGroup==='cardio'?'selected':''}>Cardio</option>
+            <option value="full" ${l.muscleGroup==='full'?'selected':''}>Full Body</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Notes</label>
+          <input type="text" id="edit-notes-${l.id}" value="${(l.notes||'').replace(/"/g,'&quot;')}" placeholder="Notes..."
+            style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;outline:none;">
+        </div>
+        <button class="btn btn-accent btn-sm" style="width:100%;" onclick="saveLogEdit(${l.id})">Save changes</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1400,8 +1489,6 @@ function renderDashboard() {
   // Week grid
   renderWeekGrid();
 
-  renderDashboardHistory();
-
   // Recent activity
   const recent = sorted.slice(0, 5);
   const rec = document.getElementById('dash-recent');
@@ -1421,6 +1508,7 @@ function renderDashboard() {
       </div>
     </div>`;
   }).join('');
+  renderDashboardHistory();
 }
 
 function calcBestStreak() {
@@ -1518,7 +1606,7 @@ function populateExerciseDropdown() {
   }
   customGroup.style.display = 'none';
   document.getElementById('exercise-custom-muscle-group').style.display = 'none'; dropGroup.style.display = 'block';
-  const list = EXERCISES[group] || [];
+  const list = getExercisesForGroup(group);
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
   // Switch form type based on group
   if (group === 'cardio') {
@@ -1624,6 +1712,7 @@ function saveExercise() {
   const customMuscle = group === 'custom'
     ? document.getElementById('inp-custom-muscle').value
     : group;
+  if (group === 'custom') rememberCustomExercise(exercise, customMuscle);
   const baseId = Date.now();
   sets.forEach((st, i) => {
     const entry = {
@@ -1770,6 +1859,9 @@ function saveCardio() {
   if (calories) summaryParts.push(calories + ' cal');
 
   const summary = summaryParts.join(' · ');
+  const group = document.getElementById('inp-group').value;
+  const customMuscle = group === 'custom' ? document.getElementById('inp-custom-muscle').value : group;
+  if (group === 'custom') rememberCustomExercise(exercise, customMuscle);
   const entry = {
     id: Date.now(), date, exercise,
     weight: 0, reps: duration, targetReps: duration, sets: 1, setNum: 1,
@@ -1808,13 +1900,47 @@ function deleteLog(id) {
   save();
   deleteEntry(id);
   refreshSelects();
-  renderDashboardHistory();
+  renderHistory();
   renderDashboard();
+  renderDashboardHistory();
   renderPBs();
 }
 
 // ── TEMPLATES ──
 let templates = [];
+let customExercises = {};
+
+function loadCustomExercises() {
+  if (!currentUser) return;
+  customExercises = JSON.parse(localStorage.getItem('gymCustomExercises_' + currentUser.key) || '{}');
+}
+
+function saveCustomExercises() {
+  if (!currentUser) return;
+  localStorage.setItem('gymCustomExercises_' + currentUser.key, JSON.stringify(customExercises));
+}
+
+function rememberCustomExercise(name, group) {
+  const exercise = String(name || '').trim();
+  const muscleGroup = String(group || '').trim();
+  if (!exercise || !muscleGroup || muscleGroup === 'other' || muscleGroup === 'custom') return;
+  if (!customExercises[muscleGroup]) customExercises[muscleGroup] = [];
+  const exists = customExercises[muscleGroup].some(e => e.toLowerCase() === exercise.toLowerCase());
+  if (!exists) {
+    customExercises[muscleGroup].push(exercise);
+    customExercises[muscleGroup].sort((a,b) => a.localeCompare(b));
+    saveCustomExercises();
+  }
+}
+
+function getExercisesForGroup(group) {
+  const base = EXERCISES[group] ? [...EXERCISES[group]] : [];
+  const extra = customExercises[group] || [];
+  extra.forEach(ex => {
+    if (!base.some(item => item.toLowerCase() === ex.toLowerCase())) base.push(ex);
+  });
+  return base.sort((a,b) => a.localeCompare(b));
+}
 
 function loadTemplatesLocal() {
   if (!currentUser) return;
@@ -1884,7 +2010,7 @@ function populateTmplExerciseDropdown() {
   if (!group) { dd.style.display='none'; cu.style.display='none'; return; }
   if (group === 'custom') { dd.style.display='none'; cu.style.display='block'; return; }
   cu.style.display='none'; dd.style.display='block';
-  const list = EXERCISES[group] || [];
+  const list = getExercisesForGroup(group);
   sel.innerHTML = '<option value="">Select exercise...</option>' + list.map(e => `<option value="${e}">${e}</option>`).join('');
 }
 
@@ -2240,11 +2366,11 @@ const EXERCISES = {
 
 // ── HISTORY ──
 function renderHistory() {
-  const filterExEl = document.getElementById('filter-ex');
+  const filterEl = document.getElementById('filter-ex');
   const periodEl = document.getElementById('filter-period');
   const el = document.getElementById('history-list');
-  if (!filterExEl || !periodEl || !el) return;
-  const filterEx = filterExEl.value;
+  if (!filterEl || !periodEl || !el) return;
+  const filterEx = filterEl.value;
   const period = periodEl.value;
   const cutoff = period === 'all' ? null : daysAgo(parseInt(period));
   let filtered = logs.filter(l =>
@@ -2383,8 +2509,9 @@ function saveLogEdit(id) {
   logs[idx].notes = notes;
   save();
   pushEntry(logs[idx]); // sync update to sheets
-  renderDashboardHistory();
+  renderHistory();
   renderDashboard();
+  renderDashboardHistory();
   renderPBs();
   showToast('Entry updated!');
 }
@@ -2866,7 +2993,7 @@ function switchPage(name, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'history') { loadLeaderboard(); }
+  if (name === 'history') { loadLeaderboard(true); }
   if (name === 'progress') { refreshSelects(); renderProgress(); }
   if (name === 'pbs') renderPBs();
   if (name === 'dashboard') renderDashboard();
@@ -2891,7 +3018,17 @@ function switchPage(name, btn) {
 if (checkAutoLogin()) {
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
-  initializeAppData();
+  loadCustomExercises();
+  refreshSelects();
+  refreshTemplateSelects();
+  renderDashboard();
+  renderDashboardHistory();
+  renderSuggestions();
+  Promise.allSettled([loadFromSheets(), loadBWFromSheets()]).then(() => {
+    renderDashboard();
+    renderDashboardHistory();
+    renderSuggestions();
+  });
 }
 </script>
 </body>
