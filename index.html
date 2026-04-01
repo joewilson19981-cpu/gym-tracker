@@ -649,28 +649,6 @@
     </div>
   </div>
 
-  <!-- ══ HISTORY ══ -->
-  <div class="page" id="page-history">
-    <div class="page-header">
-      <h1>History</h1>
-      <p>All your logged sessions</p>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
-      <select id="filter-ex" onchange="renderHistory()" style="flex:1;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:10px 12px;">
-        <option value="">All exercises</option>
-      </select>
-      <select id="filter-period" onchange="renderHistory()" style="flex:1;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:10px 12px;">
-        <option value="all">All time</option>
-        <option value="7">Last 7 days</option>
-        <option value="30">Last 30 days</option>
-        <option value="90">Last 90 days</option>
-      </select>
-    </div>
-    <div class="card">
-      <div id="history-list"></div>
-    </div>
-  </div>
-
   <!-- ══ PROGRESS ══ -->
   <div class="page" id="page-progress">
     <div class="page-header">
@@ -864,17 +842,13 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
     Log
   </button>
-  <button class="nav-btn" onclick="switchPage('leaderboard',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
-    Ranks
-  </button>
   <button class="nav-btn" onclick="switchPage('templates',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
     Templates
   </button>
-  <button class="nav-btn" onclick="switchPage('history',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    History
+  <button class="nav-btn" onclick="switchPage('leaderboard',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
+    Ranks
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -1039,46 +1013,6 @@ function rememberCustomExercise(exercise, muscleGroup) {
   }
 }
 
-const MUSCLE_KEYWORDS = {
-  chest: ['Bench Press','Incline','Decline','Chest Fly','Pec Deck','Push Up','Cable Crossover','Dips (Chest)'],
-  back: ['Deadlift','Pull Up','Chin Up','Lat Pulldown','Row','Face Pull','Pulldown','Shrug','Good Morning','Rack Pull'],
-  shoulders: ['Press','Lateral Raise','Front Raise','Rear Delt','Upright Row','Arnold'],
-  biceps: ['Curl','Preacher','Hammer','Zottman'],
-  triceps: ['Pushdown','Skull Crusher','Close Grip','Tricep','Kickback','Diamond'],
-  legs: ['Squat','Leg Press','Hack Squat','Lunge','Leg Extension','Leg Curl','Calf','Step Up','Box Jump','Romanian','Stiff Leg'],
-  glutes: ['Hip Thrust','Glute Bridge','Kickback','Sumo','Abductor','Adductor'],
-  core: ['Plank','Crunch','Leg Raise','Ab Wheel','Russian Twist','Pallof','Dead Bug','V-Up','Sit Up'],
-  cardio: ['Treadmill','Rowing','Cycling','Stair','Elliptical','HIIT','Jump Rope','Battle Rope','Cross Trainer']
-};
-
-function inferMuscleGroup(exercise, existingGroup) {
-  if (existingGroup && existingGroup !== 'other' && existingGroup !== 'custom') return existingGroup;
-  const name = String(exercise || '').trim();
-  if (!name) return existingGroup || 'other';
-
-  const prior = logs.find(l => l.exercise === name && l.muscleGroup && l.muscleGroup !== 'other' && l.muscleGroup !== 'custom');
-  if (prior) return prior.muscleGroup;
-
-  if (typeof EXERCISES !== 'undefined') {
-    for (const [group, list] of Object.entries(EXERCISES)) {
-      if (Array.isArray(list) && list.includes(name) && group !== 'custom') return group;
-    }
-  }
-
-  if (typeof customExercises !== 'undefined') {
-    for (const [group, list] of Object.entries(customExercises || {})) {
-      if (Array.isArray(list) && list.includes(name) && group !== 'other' && group !== 'custom') return group;
-    }
-  }
-
-  const lower = name.toLowerCase();
-  for (const [group, keywords] of Object.entries(MUSCLE_KEYWORDS)) {
-    if (keywords.some(k => lower.includes(k.toLowerCase()))) return group;
-  }
-
-  return existingGroup || 'other';
-}
-
 // ── DATA ──
 let logs = [];
 let pChart = null, vChart = null;
@@ -1112,39 +1046,21 @@ async function sheetRequest(params) {
 }
 
 async function pushEntry(entry) {
-  if (!currentUser) return false;
+  if (!currentUser) return;
   setSyncIndicator('syncing');
-
-  const resolvedMuscleGroup = inferMuscleGroup(entry.exercise, entry.muscleGroup);
-  if (resolvedMuscleGroup) entry.muscleGroup = resolvedMuscleGroup;
-
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const result = await sheetRequest({
-        action: 'add', user: currentUser.key,
-        id: entry.id, date: entry.date, exercise: entry.exercise,
-        weight: entry.weight, reps: entry.reps,
-        targetReps: entry.targetReps || entry.reps,
-        setNum: entry.setNum || 1,
-        notes: entry.notes || '',
-        rpe: entry.rpe || '',
-        muscleGroup: resolvedMuscleGroup || ''
-      });
-
-      if (result && result.success) {
-        setSyncIndicator('ok');
-        setTimeout(() => setSyncIndicator('idle'), 3000);
-        return true;
-      }
-    } catch(e) {}
-
-    if (attempt < 3) {
-      await new Promise(resolve => setTimeout(resolve, 250 * attempt));
-    }
-  }
-
-  setSyncIndicator('error');
-  return false;
+  try {
+    await sheetRequest({
+      action: 'add', user: currentUser.key,
+      id: entry.id, date: entry.date, exercise: entry.exercise,
+      weight: entry.weight, reps: entry.reps,
+      targetReps: entry.targetReps || entry.reps,
+      setNum: entry.setNum || 1,
+      notes: entry.notes || '',
+      rpe: entry.rpe || ''
+    });
+    setSyncIndicator('ok');
+    setTimeout(() => setSyncIndicator('idle'), 3000);
+  } catch(e) { setSyncIndicator('error'); }
 }
 
 async function deleteEntry(id) {
@@ -1173,7 +1089,7 @@ async function loadFromSheets() {
             targetReps: r.targetReps ? parseInt(r.targetReps) : null,
             setNum: r.setNum ? parseInt(r.setNum) : null,
             rpe: r.rpe ? parseInt(r.rpe) : null,
-            muscleGroup: inferMuscleGroup(r.exercise || '', r.muscleGroup || null),
+            muscleGroup: r.muscleGroup || null,
             cardio: r.cardio || false,
             summary: r.summary || null
           };
@@ -1247,7 +1163,7 @@ function renderLeaderboard(error) {
   el.innerHTML = leaderboardData.map((row, idx) => {
     const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
     const vol = Number(row.volume || 0);
-    const volText = vol >= 1000 ? (vol / 1000).toFixed(1) + 'k' : Math.round(vol);
+    const volText = vol >= 1000 ? (vol / 1000).toFixed(2) + 't' : Math.round(vol) + 'kg';
     const sessions = Number(row.sessions || 0);
     return `<div class="pb-item">
       <div>
@@ -1255,7 +1171,7 @@ function renderLeaderboard(error) {
         <div class="pb-meta">${sessions} session${sessions !== 1 ? 's' : ''} this week</div>
       </div>
       <div class="pb-right">
-        <div class="pb-weight">${volText}kg</div>
+        <div class="pb-weight">${volText}</div>
         <div class="pb-1rm">weekly volume</div>
       </div>
     </div>`;
@@ -1333,7 +1249,7 @@ function saveDashEdit(id) {
   const m = document.getElementById('dash-edit-muscle-' + id)?.value;
   if (!isNaN(w)) logs[idx].weight = w;
   if (!isNaN(r)) logs[idx].reps = r;
-  if (m) { logs[idx].muscleGroup = m; rememberCustomExercise(logs[idx].exercise, m); }
+  if (m) logs[idx].muscleGroup = m;
   save();
   if (typeof pushEntry === 'function') pushEntry(logs[idx]);
   renderDashboardHistory();
@@ -1460,8 +1376,8 @@ function renderDashboard() {
   // Volume this week vs last week
   const volThisWeek = logs.filter(l => l.date >= daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
   const volLastWeek = logs.filter(l => l.date >= daysAgo(14) && l.date < daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
-  const volThisK = volThisWeek >= 1000 ? (volThisWeek/1000).toFixed(1)+'k' : Math.round(volThisWeek);
-  document.getElementById('d-vol-week').innerHTML = volThisK + '<span style="font-size:14px;font-weight:400;color:var(--text3);">kg</span>';
+  const volThisT = volThisWeek >= 1000 ? (volThisWeek/1000).toFixed(2) + '<span style="font-size:14px;font-weight:400;color:var(--text3);">t</span>' : Math.round(volThisWeek) + '<span style="font-size:14px;font-weight:400;color:var(--text3);">kg</span>';
+  document.getElementById('d-vol-week').innerHTML = volThisT;
   const trendEl = document.getElementById('d-vol-trend');
   if (!volLastWeek) {
     trendEl.textContent = '—'; trendEl.style.color = 'var(--text3)';
@@ -1813,7 +1729,7 @@ function clearRPE() {
   showToast('RPE skipped');
 }
 
-async function saveExercise() {
+function saveExercise() {
   const exercise = getExerciseName();
   const weight = parseFloat(document.getElementById('inp-weight').value);
   const targetReps = parseInt(document.getElementById('inp-target-reps').value);
@@ -1864,20 +1780,20 @@ async function saveExercise() {
     muscleGroup: customMuscle
   }));
 
-  const pr = entries.length ? isPR(entries[0]) : false;
-  logs = [...entries.slice().reverse(), ...logs];
+  // Save all to local first so nothing is lost
+  entries.forEach(entry => { logs.unshift(entry); });
   save();
 
-  let syncedCount = 0;
-  for (const entry of entries) {
-    const synced = await pushEntry(entry);
-    if (synced) syncedCount++;
-  }
+  // Push to sheets sequentially to avoid missed entries
+  (async () => {
+    for (const entry of entries) {
+      await pushEntry(entry);
+    }
+  })();
 
-  if (syncedCount !== entries.length) {
-    showToast(`Saved locally — ${syncedCount}/${entries.length} sets synced to Google Sheets`, 'error');
-  } else if (pr) {
-    showToast(`🏆 New PR on ${exercise}! ${weight}kg`, 'pr');
+  // PR check on first set
+  if (entries.length && isPR(entries[0])) {
+    showToast(`🏆 New PR on ${exercise}! ${entries[0].weight}kg`, 'pr');
   }
 
   // Add to session display
@@ -1903,7 +1819,7 @@ async function saveExercise() {
 
   refreshSelects();
   renderDashboard();
-  if (!showToast.shown && syncedCount === entries.length) showToast(allHit ? `✓ ${exercise} — all sets hit!` : `Saved ${exercise} — ${completion}% completion`);
+  if (!showToast.shown) showToast(allHit ? `✓ ${exercise} — all sets hit!` : `Saved ${exercise} — ${completion}% completion`);
 }
 
 function renderSessionLog() {
@@ -2621,7 +2537,7 @@ function saveDashboardLogEdit(id) {
   if (!isNaN(weight)) logs[idx].weight = weight;
   if (!isNaN(reps)) logs[idx].reps = reps;
   if (!isNaN(target)) logs[idx].targetReps = target;
-  if (muscle) { logs[idx].muscleGroup = muscle; rememberCustomExercise(logs[idx].exercise, muscle); }
+  if (muscle) logs[idx].muscleGroup = muscle;
   logs[idx].notes = notes;
   save();
   pushEntry(logs[idx]);
@@ -2642,7 +2558,7 @@ function saveLogEdit(id) {
   if (!isNaN(weight)) logs[idx].weight = weight;
   if (!isNaN(reps)) logs[idx].reps = reps;
   if (!isNaN(target)) logs[idx].targetReps = target;
-  if (muscle) { logs[idx].muscleGroup = muscle; rememberCustomExercise(logs[idx].exercise, muscle); }
+  if (muscle) logs[idx].muscleGroup = muscle;
   logs[idx].notes = notes;
   save();
   pushEntry(logs[idx]); // sync update to sheets
