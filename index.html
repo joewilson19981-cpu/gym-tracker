@@ -274,6 +274,11 @@
         <div class="user-pill" onclick="switchUser()">👤 <span id="current-user-name"></span> &nbsp;·&nbsp; switch user</div>
         <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">☀️ Light</button>
       </div>
+      <div style="margin-top:10px;">
+        <button class="btn btn-ghost btn-sm" onclick="resyncToSheets()" id="resync-btn" style="width:100%;font-size:12px;">
+          🔄 Re-sync all data to Google Sheets
+        </button>
+      </div>
     </div>
 
     <!-- Streak -->
@@ -1096,18 +1101,31 @@ async function loadFromSheets() {
             cardio: r.cardio || false,
             summary: r.summary || null
           };
-        } catch(rowErr) {
-          return null;
-        }
+        } catch(rowErr) { return null; }
       }).filter(Boolean).sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
-      saveLocal();
+
+      // Auto-fix muscle groups silently — infer and push corrections back to Sheets
+      const toFix = logs.filter(l => !l.muscleGroup || l.muscleGroup === 'other' || l.muscleGroup === '');
+      if (toFix.length) {
+        toFix.forEach(l => {
+          const inferred = inferMuscleGroup(l.exercise);
+          if (inferred !== 'other') l.muscleGroup = inferred;
+        });
+        saveLocal();
+        // Push corrections to Sheets sequentially in background
+        (async () => {
+          for (const l of toFix.filter(l => l.muscleGroup && l.muscleGroup !== 'other')) {
+            await pushEntry(l);
+          }
+        })();
+      } else {
+        saveLocal();
+      }
+
       refreshSelects();
       renderDashboard();
       renderDashboardHistory();
     }
-    refreshSelects();
-    renderDashboard();
-    renderDashboardHistory();
     setSyncIndicator('ok');
     setTimeout(() => setSyncIndicator('idle'), 3000);
   } catch(e) {
@@ -1115,6 +1133,36 @@ async function loadFromSheets() {
   }
 }
 
+
+async function resyncToSheets() {
+  if (!currentUser) return;
+  if (!logs.length) { showToast('No local data to sync.'); return; }
+  const btn = document.getElementById('resync-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
+  setSyncIndicator('syncing');
+  let success = 0, failed = 0;
+  for (const entry of [...logs].reverse()) { // oldest first
+    try {
+      await sheetRequest({
+        action: 'add', user: currentUser.key,
+        id: entry.id, date: entry.date, exercise: entry.exercise,
+        weight: entry.weight, reps: entry.reps,
+        targetReps: entry.targetReps || entry.reps,
+        setNum: entry.setNum || 1,
+        notes: entry.notes || '',
+        rpe: entry.rpe || '',
+        muscleGroup: entry.muscleGroup || '',
+        cardio: entry.cardio || false,
+        summary: entry.summary || ''
+      });
+      success++;
+    } catch(e) { failed++; }
+  }
+  setSyncIndicator('ok');
+  setTimeout(() => setSyncIndicator('idle'), 3000);
+  if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-sync all data to Google Sheets'; }
+  showToast(failed === 0 ? `Synced ${success} entries ✓` : `Synced ${success}, failed ${failed}`);
+}
 
 async function loadLeaderboard(forceRefresh = false) {
   const el = document.getElementById('leaderboard-list');
@@ -1768,20 +1816,24 @@ function saveExercise() {
     rememberCustomExercise(exercise, customMuscle);
   }
 
-  const baseId = Date.now();
-  const entries = sets.map((st, i) => ({
-    id: baseId + (i * 100),
-    date,
-    exercise,
-    weight: st.weight,
-    reps: st.actualReps,
-    targetReps: st.targetReps,
-    sets: 1,
-    setNum: st.setNum,
-    notes: i === 0 ? notes : '',
-    rpe: i === 0 ? rpe : null,
-    muscleGroup: customMuscle
-  }));
+  // Generate guaranteed unique IDs - never reuse the same millisecond
+  let idCounter = Date.now();
+  const entries = sets.map((st, i) => {
+    idCounter = Math.max(idCounter + 1, Date.now() + i);
+    return {
+      id: idCounter,
+      date,
+      exercise,
+      weight: st.weight,
+      reps: st.actualReps,
+      targetReps: st.targetReps,
+      sets: 1,
+      setNum: st.setNum,
+      notes: i === 0 ? notes : '',
+      rpe: i === 0 ? rpe : null,
+      muscleGroup: customMuscle
+    };
+  });
 
   // Save all to local first so nothing is lost
   entries.forEach(entry => { logs.unshift(entry); });
