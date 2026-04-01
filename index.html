@@ -354,8 +354,11 @@
     </div>
 
     <!-- History -->
-    <div class=\"section-title\">History</div>
-    <div class=\"card\">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px;">
+      <div class="section-title" style="margin:0;">History</div>
+      <button class="btn btn-ghost btn-sm" onclick="fixAllMuscleGroups()" style="font-size:11px;">Fix muscle groups</button>
+    </div>
+    <div class="card">
       <div id="dash-history"></div>
     </div>
   </div>
@@ -848,7 +851,7 @@
   </button>
   <button class="nav-btn" onclick="switchPage('leaderboard',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18V13"/></svg>
-    Ranks
+    Leaderboard
   </button>
   <button class="nav-btn" onclick="switchPage('progress',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -2387,6 +2390,59 @@ const EXERCISES = {
   cardio: ['Treadmill Run','Treadmill Walk','Cycling (Stationary)','Rowing Machine','Stair Climber','Elliptical','HIIT Sprints','Jump Rope','Battle Ropes','Cross Trainer'],
   full: ['Clean and Press','Thruster','Kettlebell Swing','Turkish Get Up','Burpee','Power Clean','Snatch','Farmer Carry','Sled Push','Sled Pull','Battle Rope Waves'],
 };
+
+// ── MUSCLE GROUP INFERENCE ──
+function inferMuscleGroup(exercise) {
+  if (!exercise) return 'other';
+  // Check exact match in EXERCISES library first
+  for (const [group, list] of Object.entries(EXERCISES)) {
+    if (list.includes(exercise)) return group;
+  }
+  // Check custom exercises memory
+  if (typeof customExercises !== 'undefined') {
+    for (const [group, list] of Object.entries(customExercises)) {
+      if (list.includes(exercise)) return group;
+    }
+  }
+  // Keyword fallback
+  const ex = exercise.toLowerCase();
+  const keywords = {
+    chest: ['bench press','incline','decline','chest fly','pec deck','push up','cable crossover','dips (chest)'],
+    back: ['deadlift','pull up','chin up','lat pulldown','row','face pull','pulldown','shrug','good morning','rack pull'],
+    shoulders: ['overhead press','lateral raise','front raise','rear delt','upright row','arnold press'],
+    biceps: ['curl','preacher','hammer','zottman'],
+    triceps: ['pushdown','skull crusher','close grip','tricep','kickback','diamond push'],
+    legs: ['squat','leg press','hack squat','lunge','leg extension','leg curl','calf','step up','box jump','romanian','stiff leg'],
+    glutes: ['hip thrust','glute bridge','sumo','abductor','adductor'],
+    core: ['plank','crunch','leg raise','ab wheel','russian twist','pallof','dead bug','v-up','sit up'],
+    cardio: ['treadmill','rowing','cycling','stair','elliptical','hiit','jump rope','battle rope','cross trainer'],
+  };
+  for (const [group, words] of Object.entries(keywords)) {
+    if (words.some(w => ex.includes(w))) return group;
+  }
+  return 'other';
+}
+
+function fixAllMuscleGroups() {
+  let fixed = 0;
+  logs.forEach(l => {
+    if (!l.muscleGroup || l.muscleGroup === 'other' || l.muscleGroup === '') {
+      const inferred = inferMuscleGroup(l.exercise);
+      if (inferred !== 'other') {
+        l.muscleGroup = inferred;
+        fixed++;
+      }
+    }
+  });
+  if (fixed > 0) {
+    save();
+    renderDashboard();
+    renderDashboardHistory();
+    showToast(`Fixed muscle groups on ${fixed} entries ✓`);
+  } else {
+    showToast('All entries already have muscle groups assigned');
+  }
+}
 
 // ── HISTORY ──
 function renderHistory() {
