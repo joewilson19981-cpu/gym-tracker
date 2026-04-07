@@ -958,6 +958,8 @@ function attemptLogin() {
   loadBWLocal();
   loadGoals();
   loadCustomExercises();
+  loadSyncQueue();
+  startSyncRetry();
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('current-user-name').textContent = name;
   document.getElementById('inp-date').value = todayStr();
@@ -989,6 +991,8 @@ function checkAutoLogin() {
       loadTemplatesLocal();
       loadGoals();
       loadCustomExercises();
+      loadSyncQueue();
+      startSyncRetry();
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('current-user-name').textContent = u.name;
       return true;
@@ -1053,22 +1057,91 @@ async function sheetRequest(params) {
   return res.json();
 }
 
+// ── SYNC QUEUE ──
+// All failed pushes go into a persistent queue and are retried automatically
+let syncQueue = [];
+let syncRetryTimer = null;
+let isSyncing = false;
+
+function loadSyncQueue() {
+  if (!currentUser) return;
+  syncQueue = JSON.parse(localStorage.getItem('gymSyncQueue_' + currentUser.key) || '[]');
+}
+
+function saveSyncQueue() {
+  if (!currentUser) return;
+  localStorage.setItem('gymSyncQueue_' + currentUser.key, JSON.stringify(syncQueue));
+}
+
+function addToQueue(entry) {
+  // Avoid duplicates in queue
+  const exists = syncQueue.some(q => String(q.id) === String(entry.id));
+  if (!exists) {
+    syncQueue.push(entry);
+    saveSyncQueue();
+  }
+}
+
+function removeFromQueue(id) {
+  syncQueue = syncQueue.filter(q => String(q.id) !== String(id));
+  saveSyncQueue();
+}
+
 async function pushEntry(entry) {
   if (!currentUser) return;
+  // Always add to queue first so nothing is lost
+  addToQueue(entry);
+  // Then attempt to flush
+  await flushSyncQueue();
+}
+
+async function flushSyncQueue() {
+  if (!currentUser || isSyncing || !syncQueue.length) return;
+  isSyncing = true;
   setSyncIndicator('syncing');
-  try {
-    await sheetRequest({
-      action: 'add', user: currentUser.key,
-      id: entry.id, date: entry.date, exercise: entry.exercise,
-      weight: entry.weight, reps: entry.reps,
-      targetReps: entry.targetReps || entry.reps,
-      setNum: entry.setNum || 1,
-      notes: entry.notes || '',
-      rpe: entry.rpe || ''
-    });
+  const toSync = [...syncQueue];
+  let anyFailed = false;
+  for (const entry of toSync) {
+    try {
+      await sheetRequest({
+        action: 'add', user: currentUser.key,
+        id: entry.id, date: entry.date, exercise: entry.exercise,
+        weight: entry.weight, reps: entry.reps,
+        targetReps: entry.targetReps || entry.reps,
+        setNum: entry.setNum || 1,
+        notes: entry.notes || '',
+        rpe: entry.rpe || '',
+        muscleGroup: entry.muscleGroup || '',
+        cardio: entry.cardio || false,
+        summary: entry.summary || ''
+      });
+      removeFromQueue(entry.id);
+    } catch(e) {
+      anyFailed = true;
+      // Leave in queue to retry later
+    }
+  }
+  isSyncing = false;
+  if (!anyFailed) {
     setSyncIndicator('ok');
     setTimeout(() => setSyncIndicator('idle'), 3000);
-  } catch(e) { setSyncIndicator('error'); }
+  } else {
+    setSyncIndicator('error');
+    // Show how many are still pending
+    const pending = syncQueue.length;
+    const el = document.getElementById('sync-indicator');
+    if (el) el.textContent = `⚠️ ${pending} pending — will retry`;
+  }
+}
+
+function startSyncRetry() {
+  // Retry every 30 seconds in background
+  if (syncRetryTimer) clearInterval(syncRetryTimer);
+  syncRetryTimer = setInterval(async () => {
+    if (syncQueue.length > 0) {
+      await flushSyncQueue();
+    }
+  }, 30000);
 }
 
 async function deleteEntry(id) {
@@ -1418,15 +1491,17 @@ function renderDashboard() {
   // Best ever streak
   document.getElementById('d-best-streak').textContent = calcBestStreak();
 
-  // Sessions
+  // Sessions — Mon-Sun week to match leaderboard
+  const mondayStr = startOfWeekDate().toISOString().slice(0,10);
+  const lastMondayStr = (() => { const d = startOfWeekDate(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); })();
   const uniqueDates = new Set(logs.map(l => l.date));
   document.getElementById('d-sessions').textContent = uniqueDates.size;
-  const weekDates = new Set(logs.filter(l => l.date >= daysAgo(7)).map(l => l.date));
+  const weekDates = new Set(logs.filter(l => l.date >= mondayStr).map(l => l.date));
   document.getElementById('d-week').textContent = weekDates.size;
 
-  // Volume this week vs last week
-  const volThisWeek = logs.filter(l => l.date >= daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
-  const volLastWeek = logs.filter(l => l.date >= daysAgo(14) && l.date < daysAgo(7)).reduce((s,l) => s + l.weight * l.reps, 0);
+  // Volume this week vs last week (Mon-Sun)
+  const volThisWeek = logs.filter(l => l.date >= mondayStr).reduce((s,l) => s + l.weight * l.reps, 0);
+  const volLastWeek = logs.filter(l => l.date >= lastMondayStr && l.date < mondayStr).reduce((s,l) => s + l.weight * l.reps, 0);
   const volThisT = volThisWeek >= 1000 ? (volThisWeek/1000).toFixed(2) + '<span style="font-size:14px;font-weight:400;color:var(--text3);">t</span>' : Math.round(volThisWeek) + '<span style="font-size:14px;font-weight:400;color:var(--text3);">kg</span>';
   document.getElementById('d-vol-week').innerHTML = volThisT;
   const trendEl = document.getElementById('d-vol-trend');
@@ -1480,7 +1555,7 @@ function renderDashboard() {
     return 'other';
   }
 
-  const weekLogs = logs.filter(l => l.date >= daysAgo(7));
+  const weekLogs = logs.filter(l => l.date >= mondayStr);
   const muscleSets = {};
   weekLogs.forEach(l => {
     const g = getMusclGroup(l.exercise, l);
@@ -3175,6 +3250,11 @@ function switchPage(name, btn) {
 }
 
 // ── INIT ──
+// Flush queue whenever device comes back online
+window.addEventListener('online', () => {
+  if (syncQueue.length > 0) flushSyncQueue();
+});
+
 if (checkAutoLogin()) {
   document.getElementById('inp-date').value = todayStr();
   loadTemplatesLocal();
