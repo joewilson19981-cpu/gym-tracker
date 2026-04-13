@@ -1439,16 +1439,17 @@ function calcStreak() {
 // ── WEEK GRID ──
 function renderWeekGrid() {
   const days = ['M','T','W','T','F','S','S'];
-  const today = new Date();
   const grid = document.getElementById('week-grid');
+  const monday = startOfWeekDate();
   let html = '';
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
     const ds = d.toISOString().slice(0,10);
     const hit = logs.some(l => l.date === ds);
-    const dayName = days[d.getDay() === 0 ? 6 : d.getDay() - 1];
-    html += `<div class="week-dot ${hit ? 'hit' : ''}"><span>${dayName}</span>${d.getDate()}</div>`;
+    const dayName = days[i];
+    const isToday = ds === todayStr();
+    html += `<div class="week-dot ${hit ? 'hit' : ''}" style="${isToday ? 'border:0.5px solid var(--accent);' : ''}"><span>${dayName}</span>${d.getDate()}</div>`;
   }
   grid.innerHTML = html;
 }
