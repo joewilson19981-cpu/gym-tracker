@@ -1261,10 +1261,17 @@ async function loadLeaderboard(forceRefresh = false) {
 
 function startOfWeekDate() {
   const d = new Date();
-  const day = d.getDay();
-  d.setHours(0,0,0,0);
+  const day = d.getDay(); // 0=Sun, 1=Mon
+  d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
   return d;
+}
+
+function localDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function renderLeaderboard(error) {
@@ -1384,15 +1391,14 @@ function saveDashEdit(id) {
 function save() { saveLocal(); }
 
 function todayStr() {
-  return new Date().toISOString().slice(0,10);
+  return localDateStr(new Date());
 }
 
 function daysAgo(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0,10);
+  return localDateStr(d);
 }
-
 // ── 1RM (Epley formula) ──
 function calc1RM(weight, reps) {
   if (reps === 1) return weight;
@@ -1411,26 +1417,21 @@ function calcStreak() {
   if (!logs.length) return 0;
   const weeks = new Set();
   logs.forEach(l => {
-    const d = new Date(l.date);
+    const d = new Date(l.date + 'T00:00:00');
     const mon = new Date(d);
     mon.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1));
-    weeks.add(mon.toISOString().slice(0,10));
+    weeks.add(localDateStr(mon));
   });
   const sorted = [...weeks].sort().reverse();
-  const thisMonday = (() => {
-    const d = new Date();
-    const day = d.getDay();
-    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-    return d.toISOString().slice(0,10);
-  })();
+  const thisMonday = localDateStr(startOfWeekDate());
   let streak = 0;
   let expected = thisMonday;
   for (const w of sorted) {
     if (w === expected) {
       streak++;
-      const d = new Date(expected);
+      const d = new Date(expected + 'T00:00:00');
       d.setDate(d.getDate() - 7);
-      expected = d.toISOString().slice(0,10);
+      expected = localDateStr(d);
     } else break;
   }
   return streak;
@@ -1445,7 +1446,7 @@ function renderWeekGrid() {
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    const ds = d.toISOString().slice(0,10);
+    const ds = localDateStr(d);
     const hit = logs.some(l => l.date === ds);
     const dayName = days[i];
     const isToday = ds === todayStr();
@@ -1493,8 +1494,21 @@ function renderDashboard() {
   document.getElementById('d-best-streak').textContent = calcBestStreak();
 
   // Sessions — Mon-Sun week to match leaderboard
-  const mondayStr = startOfWeekDate().toISOString().slice(0,10);
-  const lastMondayStr = (() => { const d = startOfWeekDate(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); })();
+  const mondayStr = (() => {
+    const d = startOfWeekDate();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
+  const lastMondayStr = (() => {
+    const d = startOfWeekDate();
+    d.setDate(d.getDate() - 7);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
   const uniqueDates = new Set(logs.map(l => l.date));
   document.getElementById('d-sessions').textContent = uniqueDates.size;
   const weekDates = new Set(logs.filter(l => l.date >= mondayStr).map(l => l.date));
@@ -1636,16 +1650,16 @@ function calcBestStreak() {
   if (!logs.length) return 0;
   const weeks = new Set();
   logs.forEach(l => {
-    const d = new Date(l.date);
+    const d = new Date(l.date + 'T00:00:00');
     const mon = new Date(d);
     mon.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1));
-    weeks.add(mon.toISOString().slice(0,10));
+    weeks.add(localDateStr(mon));
   });
   const sorted = [...weeks].sort();
   let best = 1, current = 1;
   for (let i = 1; i < sorted.length; i++) {
-    const prev = new Date(sorted[i-1]);
-    const curr = new Date(sorted[i]);
+    const prev = new Date(sorted[i-1] + 'T00:00:00');
+    const curr = new Date(sorted[i] + 'T00:00:00');
     const diff = (curr - prev) / (7 * 86400000);
     if (Math.round(diff) === 1) { current++; best = Math.max(best, current); }
     else current = 1;
